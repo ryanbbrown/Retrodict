@@ -12,6 +12,8 @@ coverage/
 __pycache__/
 .venv/
 
+runs/
+
 .agent/learnings.jsonl
 
 .archive/
