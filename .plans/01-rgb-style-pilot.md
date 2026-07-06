@@ -20,7 +20,7 @@ Two outcomes make this worthwhile:
 
 - No baseline1-style world-model contract, verifiers, or subagents — phase 2, only if pilot data shows lock-in/variance failures.
 - No competition-mode runs — regular API mode for the pilot; competition mode only for a later clean full-set run. Pilot scorecards are never submitted.
-- No changes to thinharness core unless forced; anything project-specific (e.g., the python exec tool) lives in this repo first and is upstreamed later only if it proves out. One known upstream dependency is tracked separately: Anthropic prompt caching (see Key decisions).
+- No changes to thinharness core unless forced; anything project-specific (e.g., the python exec tool) lives in this repo first and is upstreamed later only if it proves out.
 
 ## Design
 
@@ -41,7 +41,7 @@ arc3-thinharness/
 ### Control flow (one game)
 
 1. Runner creates `runs/<game>/workspace/` from the template, opens the env via `arc-agi`, writes the initial frame to `log.txt`.
-2. Runner invokes the thinharness agent (Opus 4.6 — confirm the exact ref resolves via `infer_model("anthropic:...")` at step 1 — with `max_tokens` set explicitly to 8192; the Anthropic model default is 1024, which would truncate `[ACTIONS]` blocks). Agent tools: `read`, `search` (rg-backed grep), `python` (PythonTool). File-tool jail root = the workspace.
+2. Runner invokes the thinharness agent (GPT-5.5 — confirm the exact ref resolves via `infer_model("openai:...")` at step 1 — with `reasoning: {"effort": "high"}` and a generous `max_output_tokens` set via `ModelSettings.extra_body`; both are top-level Responses-API fields, and a low output cap would truncate `[ACTIONS]` blocks). Agent tools: `read`, `search` (rg-backed grep), `python` (PythonTool). File-tool jail root = the workspace.
 3. Agent replies with analysis ending in an `[ACTIONS]` block: `{"plan": [{"action": "ACTION1"}, {"action": "ACTION6", "x": 3, "y": 7}, ...], "reasoning": "..."}`. The plan is plain text parsed by `plan_parser` — **do not use thinharness structured output (`output_type`/`final_result`) for this**: finalizing via the output tool suppresses `resume_state` and silently breaks same-conversation re-invocation. Parse validation: JSON shape, action names, ACTION6 requires integer `x`,`y` in `0..63`. On parse failure, one retry with the error appended.
 4. Runner drains the queue one action per env step — no LLM calls. Before each step it re-checks the action against the env's **current** `available_actions` (the set changes during play); on mismatch it truncates the queue and re-invokes the agent. Each step appends to `log.txt`: action, settled ASCII frame, any intermediate animation frames, `levels_completed`/`win_levels`, `state`, `available_actions`.
 5. Re-invoke the agent — passing the persisted `HarnessResult.resume_state` as `resume_from` so the conversation continues — when: queue empty, `levels_completed` changes, `state` transitions, or a mid-drain validation mismatch. On `GAME_OVER`, the runner issues `RESET` (an attempt/level reset — the same protocol baseline1's controller uses after death; whole-game restarts are never used) and tells the agent. Start a fresh conversation (no `resume_from`) when cumulative input tokens per `RunUsage` exceed 150k — the log is the durable memory, and the fresh-session prompt directs the agent to re-read `log.txt`.
@@ -60,26 +60,25 @@ Accepted and documented: the agent's python can still read unrelated host files 
 ### Key decisions (defaults chosen, flag if you disagree)
 
 - **Session continuity**: continue one conversation per game via `resume_state`/`resume_from` until the 150k-input-token threshold, then fresh session. Alternative (fresh every invocation) is simpler and more cache-friendly but discards in-context reasoning; revisit with pilot data.
-- **Anthropic prompt caching is an upstream thinharness dependency, verified here.** OpenAI caches long prefixes automatically; Anthropic requires request-side `cache_control` markers, which thinharness does not yet emit (0.5.1 added cached-token *reporting* only — `RunUsage.cached_tokens`, the `gen_ai.usage.cache_read.input_tokens` span attribute). The fix belongs in thinharness itself and is being handled there separately; this repo does not implement caching. The paid pilot stays gated on a verified cache hit (step 5a). If the upstream fix isn't in place, either re-price the pilot (~3–4×) or defer paid runs.
-- **PythonTool and caching stay project-local**, upstream later.
+- **PythonTool stays project-local**, upstream later.
 - **No PNG rendering in the pilot.** RGB succeeded text-only; baseline1's PNG pipeline is phase-2 material.
-- **Model**: Opus 4.6 for real runs (matches RGB, enables direct comparison); Sonnet for plumbing debugging.
+- **Model**: GPT-5.5 high reasoning for real runs — matches baseline1, so Phase B/C comparisons are model-controlled and any win is attributable to the harness/recipe. A cheap model for plumbing debugging. Optional nice-to-have: one late ft09 run on Opus 4.6 (~$60) for a directly RGB-comparable action count (RGB ran Opus).
 - **Per-invocation harness limits set deliberately**: `max_model_requests` raised from the default 64 (a long analysis over a 100k-line log can approach it); value picked at step 5 from observed invocation shapes.
 
 ## Build steps
 
-1. Scaffold: `requires-python = ">=3.12"`, `uv add arc-agi`, path-dep on thinharness, `runs/` in `.gitignore`, README updated with run basics → verify: `uv run python -c "import arc_agi, thinharness"`; the Opus model ref resolves via `infer_model`; `uv pip show -f arc-agi` recorded to confirm `arcengine` ships (determines containment scope).
+1. Scaffold: `requires-python = ">=3.12"`, `uv add arc-agi`, path-dep on thinharness, `runs/` in `.gitignore`, README updated with run basics → verify: `uv run python -c "import arc_agi, thinharness"`; the GPT-5.5 model ref resolves via `infer_model`; `uv pip show -f arc-agi` recorded to confirm `arcengine` ships (determines containment scope).
 2. `logwriter` + a scripted random agent playing ls20 **locally** → verify: golden-file test that `log.txt` sections parse back to the exact frames/levels/state the env returned, including a multi-frame (animation) step.
 3. `PythonTool` + analysis venv → verify: unit tests — code runs with timeout and output caps; `import arcengine` and `import arc_agi` fail in the agent's interpreter.
 4. `plan_parser` → verify: unit tests — valid plans; malformed JSON; unavailable actions; ACTION6 missing/out-of-bounds/non-integer coordinates; empty plan; duplicate `[ACTIONS]` blocks; truncated output (finish reason = max_tokens); plan longer than remaining action budget.
 5. Runner with **fake env + fake model** unit tests → verify: queue drains with zero model calls; mid-drain `available_actions` mismatch truncates and re-invokes; `levels_completed`/`state` transitions interrupt; parse-retry limit; `GAME_OVER` → RESET counts toward the action cap (no infinite reset loop); `WIN`, action-cap, and cost-cap stops; `resume_state` round-trip across invocations; fresh-session threshold drops the transcript but the next prompt points at `log.txt`.
-   5a. Caching check (depends on the upstream thinharness Anthropic-caching fix) → verify: two consecutive live invocations on Sonnet; assert `cached_tokens > 0` (via `RunUsage` / the `gen_ai.usage.cache_read.input_tokens` tracing attribute) on the second. **Gate: no paid pilot runs until this passes.**
-6. End-to-end with Sonnet on **local** ls20 → verify: completes ≥1 level or exhausts the action cap without a crash; transcript and `metrics.json` (actions, invocations, tokens, cached tokens, cost) written; the step-3 `import arcengine` check output is included in the run artifacts.
+   5a. Cache-hit sanity check → verify: two consecutive live invocations on a cheap model; assert `cached_tokens > 0` (via `RunUsage`) on the second. OpenAI prefix caching is automatic; this just confirms the loop is structured to benefit (stable prefix, growing suffix) before paid runs.
+6. End-to-end with a cheap OpenAI model (e.g., gpt-5-mini — same Responses provider path as real runs) on **local** ls20 → verify: completes ≥1 level or exhausts the action cap without a crash; transcript and `metrics.json` (actions, invocations, tokens, cached tokens, cost) written; the step-3 `import arcengine` check output is included in the run artifacts.
 7. Switch to API mode (`.env` key) → verify: one short API run on ft09 matches local-mode behavior (same log format, same loop).
 
 ## Pilot protocol
 
-All runs API mode, Opus 4.6, one run per game (accept variance; note it), action cap 2,000. Comparison numbers below are baseline1's released secure GPT-5.5 run.
+All runs API mode, GPT-5.5 high reasoning, one run per game (accept variance; note it), action cap 2,000. Comparison numbers below are baseline1's released secure GPT-5.5 run — same model, so those comparisons are model-controlled. RGB's Phase A action counts were achieved on Opus 4.6; treat the 2× band as a soft cross-model target.
 
 - **Phase A — port calibration** (games with published RGB + baseline1 + human numbers): ft09, ls20, vc33. Success: solve ft09 and ls20 fully within ~2× RGB's action counts (≤160 / ≤1,100). Context: clean baseline1 solved both but inefficiently (ft09 57.8% RHAE at 474 steps; ls20 57.0% at 1,600). vc33 is informative either way — clean baseline1 reached only 3/7; RGB solved it.
 - **Phase B — generalization** (games clean baseline1 aced, short, cheap): cd82 (92.9%, 170 steps), tu93 (100%, 266), lp85 (100%, 190). Success: solve ≥2 of 3 fully. Failure here = the recipe doesn't generalize; stop and rethink before spending more.
@@ -87,7 +86,7 @@ All runs API mode, Opus 4.6, one run per game (accept variance; note it), action
 
 Per-game record: levels completed, total actions, actions per level vs human baseline where known, invocations, cached vs uncached tokens, cost, and a 3-sentence failure note (which level, what hypothesis the agent was stuck on). Decision gate: if Phase A+B succeed, plan the full 25-game run + phase-2 hybrid as `02-*`; if not, the failure notes say what to fix first.
 
-Budget: ~8 games × ~$40–60 ≈ **$350–500** assuming verified caching (step 5a), plus <$20 of Sonnet debugging. Hard per-game cost cap $80. Phase A failures get one re-run before drawing port-quality conclusions (~$100 reserve); Phases B/C do not.
+Budget: ~8 games × ~$40–60 ≈ **$350–500** (likely less at GPT-5.5 pricing with automatic prefix caching), plus <$20 of cheap-model debugging. Hard per-game cost cap $80. Phase A failures get one re-run before drawing port-quality conclusions (~$100 reserve); Phases B/C do not.
 
 ## Risks
 
