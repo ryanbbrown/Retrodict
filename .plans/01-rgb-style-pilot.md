@@ -20,7 +20,7 @@ Two outcomes make this worthwhile:
 
 - No baseline1-style world-model contract, verifiers, or subagents — phase 2, only if pilot data shows lock-in/variance failures.
 - No competition-mode runs — regular API mode for the pilot; competition mode only for a later clean full-set run. Pilot scorecards are never submitted.
-- No changes to thinharness core unless forced; anything project-specific (python exec tool, cache-control injection) lives in this repo first and is upstreamed later only if it proves out.
+- No changes to thinharness core unless forced; anything project-specific (e.g., the python exec tool) lives in this repo first and is upstreamed later only if it proves out. One known upstream dependency is tracked separately: Anthropic prompt caching (see Key decisions).
 
 ## Design
 
@@ -32,7 +32,6 @@ arc3-thinharness/
     logwriter.py          # observations → workspace/log.txt (append-only)
     plan_parser.py        # extract/validate the [ACTIONS] JSON from agent output
     tools.py              # PythonTool: direct python exec in the analysis venv (see Python execution)
-    caching.py            # AnthropicMessagesModel subclass injecting cache_control breakpoints
     prompts.py            # system + re-invocation prompts (adapted from RGB's published design)
   workspace_template/     # copied to runs/<game>/workspace/ per run; jail root for the agent
   runs/                   # per-run artifacts: workspace, transcript, metrics.json (in .gitignore)
@@ -61,7 +60,7 @@ Accepted and documented: the agent's python can still read unrelated host files 
 ### Key decisions (defaults chosen, flag if you disagree)
 
 - **Session continuity**: continue one conversation per game via `resume_state`/`resume_from` until the 150k-input-token threshold, then fresh session. Alternative (fresh every invocation) is simpler and more cache-friendly but discards in-context reasoning; revisit with pilot data.
-- **Prompt caching is a build feature, not an assumption.** thinharness 0.5.1 added cached-token *reporting* (`RunUsage.cached_tokens`, the `gen_ai.usage.cache_read.input_tokens` span attribute) but does not emit request-side `cache_control` markers, and Anthropic caching is explicit-opt-in. `caching.py` subclasses the Anthropic model/session to inject breakpoints (system prompt + message-history prefix); 0.5.1's reporting is how hits are verified. The paid pilot is gated on a verified cache hit (step 5a). If caching can't be made to hit, re-price the pilot (~3–4×) before proceeding.
+- **Anthropic prompt caching is an upstream thinharness dependency, verified here.** OpenAI caches long prefixes automatically; Anthropic requires request-side `cache_control` markers, which thinharness does not yet emit (0.5.1 added cached-token *reporting* only — `RunUsage.cached_tokens`, the `gen_ai.usage.cache_read.input_tokens` span attribute). The fix belongs in thinharness itself and is being handled there separately; this repo does not implement caching. The paid pilot stays gated on a verified cache hit (step 5a). If the upstream fix isn't in place, either re-price the pilot (~3–4×) or defer paid runs.
 - **PythonTool and caching stay project-local**, upstream later.
 - **No PNG rendering in the pilot.** RGB succeeded text-only; baseline1's PNG pipeline is phase-2 material.
 - **Model**: Opus 4.6 for real runs (matches RGB, enables direct comparison); Sonnet for plumbing debugging.
@@ -74,7 +73,7 @@ Accepted and documented: the agent's python can still read unrelated host files 
 3. `PythonTool` + analysis venv → verify: unit tests — code runs with timeout and output caps; `import arcengine` and `import arc_agi` fail in the agent's interpreter.
 4. `plan_parser` → verify: unit tests — valid plans; malformed JSON; unavailable actions; ACTION6 missing/out-of-bounds/non-integer coordinates; empty plan; duplicate `[ACTIONS]` blocks; truncated output (finish reason = max_tokens); plan longer than remaining action budget.
 5. Runner with **fake env + fake model** unit tests → verify: queue drains with zero model calls; mid-drain `available_actions` mismatch truncates and re-invokes; `levels_completed`/`state` transitions interrupt; parse-retry limit; `GAME_OVER` → RESET counts toward the action cap (no infinite reset loop); `WIN`, action-cap, and cost-cap stops; `resume_state` round-trip across invocations; fresh-session threshold drops the transcript but the next prompt points at `log.txt`.
-   5a. `caching.py` → verify: two consecutive live invocations on Sonnet; assert `cached_tokens > 0` (via `RunUsage` / the `gen_ai.usage.cache_read.input_tokens` tracing attribute) on the second. **Gate: no paid pilot runs until this passes.**
+   5a. Caching check (depends on the upstream thinharness Anthropic-caching fix) → verify: two consecutive live invocations on Sonnet; assert `cached_tokens > 0` (via `RunUsage` / the `gen_ai.usage.cache_read.input_tokens` tracing attribute) on the second. **Gate: no paid pilot runs until this passes.**
 6. End-to-end with Sonnet on **local** ls20 → verify: completes ≥1 level or exhausts the action cap without a crash; transcript and `metrics.json` (actions, invocations, tokens, cached tokens, cost) written; the step-3 `import arcengine` check output is included in the run artifacts.
 7. Switch to API mode (`.env` key) → verify: one short API run on ft09 matches local-mode behavior (same log format, same loop).
 
