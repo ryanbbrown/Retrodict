@@ -31,7 +31,7 @@ arc3-thinharness/
     runner.py             # per-game controller: env loop, action queue, agent re-invocation
     logwriter.py          # observations → workspace/log.txt (append-only)
     plan_parser.py        # extract/validate the [ACTIONS] JSON from agent output
-    tools.py              # PythonTool: sandboxed python exec (see Containment)
+    tools.py              # PythonTool: direct python exec in the analysis venv (see Python execution)
     caching.py            # AnthropicMessagesModel subclass injecting cache_control breakpoints
     prompts.py            # system + re-invocation prompts (adapted from RGB's published design)
   workspace_template/     # copied to runs/<game>/workspace/ per run; jail root for the agent
@@ -52,20 +52,16 @@ arc3-thinharness/
 
 Plain text, sectioned per step with stable markers: `[STEP n]`, `[ACTION]`, `[BOARD]` (64 rows of 64 space-separated ints; intermediate animation frames included and labeled), `[LEVELS] completed/win`, `[STATE]`, `[AVAILABLE]`, plus `[PLAN]` blocks where the runner appends the agent's stated plan after each invocation. Markers are grep-anchors; RGB showed models handle 100k+ line logs this way without summarization.
 
-### Containment (leakage is the existential risk)
+### Python execution and leakage
 
-A cwd-scoped bash tool is not a jail: a `python3` subprocess can `open()` any host path, reach the network, and `import arcengine` from site-packages — and `arcengine` ships with `arc-agi` in every mode. Mechanism, three layers:
+This is a result-validity concern, not a security one: `arc-agi` hard-depends on `arcengine`, so the game engine source sits in the runner's site-packages in every mode, and a good result is dismissible if the agent could have read it (baseline1's authors retracted an entire run over this class of problem). The fix is one design choice, not extra machinery: **PythonTool execs `[analysis_venv/bin/python3, "-c", code]` directly via subprocess** (same shape as thinharness's BashTool — timeout, output caps, workspace cwd), where the analysis venv contains only numpy/scipy/networkx and not `arc-agi`/`arcengine`. The engines aren't importable because they aren't installed in the agent's interpreter, and direct argv exec is less code than filtering `bash -c` command strings. RGB's equivalent wall was running OpenCode in Docker; if belt-and-braces parity is ever wanted, wrapping the runner in `docker run` later is a one-liner, not a build item.
 
-1. **No shell.** PythonTool builds argv directly (`[python, script_path]`), never `bash -c`, eliminating shell-metacharacter injection. Own args model (not `BashArgs`), timeout ≤120s.
-2. **Separate analysis venv.** The agent's interpreter is a dedicated venv containing only numpy/scipy/networkx — **not** `arc-agi`/`arcengine` — so the engines aren't importable even if reads escape.
-3. **OS sandbox.** The interpreter runs under `sandbox-exec` with a profile denying network entirely and file reads/writes outside the workspace + the analysis venv + system libraries.
-
-The leakage acceptance test (build step 6) runs in the **real run environment** with `arcengine` installed and asserts the mechanism, not model compliance: `open()` outside the workspace, an outbound socket, `subprocess`/`os.system` escape attempts, and `import arcengine` must all fail.
+Accepted and documented: the agent's python can still read unrelated host files and reach the network. For a pilot with a non-adversarial model and no web tools that's fine; revisit only for competition-mode runs.
 
 ### Key decisions (defaults chosen, flag if you disagree)
 
 - **Session continuity**: continue one conversation per game via `resume_state`/`resume_from` until the 150k-input-token threshold, then fresh session. Alternative (fresh every invocation) is simpler and more cache-friendly but discards in-context reasoning; revisit with pilot data.
-- **Prompt caching is a build feature, not an assumption.** thinharness emits no `cache_control` today, and the Anthropic path sends none via `extra_body` per-block. `caching.py` subclasses the Anthropic model/session to inject breakpoints (system prompt + message-history prefix). The paid pilot is gated on a verified cache hit (step 5a). If caching can't be made to hit, re-price the pilot (~3–4×) before proceeding.
+- **Prompt caching is a build feature, not an assumption.** thinharness 0.5.1 added cached-token *reporting* (`RunUsage.cached_tokens`, the `gen_ai.usage.cache_read.input_tokens` span attribute) but does not emit request-side `cache_control` markers, and Anthropic caching is explicit-opt-in. `caching.py` subclasses the Anthropic model/session to inject breakpoints (system prompt + message-history prefix); 0.5.1's reporting is how hits are verified. The paid pilot is gated on a verified cache hit (step 5a). If caching can't be made to hit, re-price the pilot (~3–4×) before proceeding.
 - **PythonTool and caching stay project-local**, upstream later.
 - **No PNG rendering in the pilot.** RGB succeeded text-only; baseline1's PNG pipeline is phase-2 material.
 - **Model**: Opus 4.6 for real runs (matches RGB, enables direct comparison); Sonnet for plumbing debugging.
@@ -75,13 +71,12 @@ The leakage acceptance test (build step 6) runs in the **real run environment** 
 
 1. Scaffold: `requires-python = ">=3.12"`, `uv add arc-agi`, path-dep on thinharness, `runs/` in `.gitignore`, README updated with run basics → verify: `uv run python -c "import arc_agi, thinharness"`; the Opus model ref resolves via `infer_model`; `uv pip show -f arc-agi` recorded to confirm `arcengine` ships (determines containment scope).
 2. `logwriter` + a scripted random agent playing ls20 **locally** → verify: golden-file test that `log.txt` sections parse back to the exact frames/levels/state the env returned, including a multi-frame (animation) step.
-3. `PythonTool` + sandbox profile → verify: unit tests for the containment acceptance list (open outside workspace, socket, subprocess/os.system, `import arcengine`, shell-metacharacter payloads, infinite-loop timeout).
+3. `PythonTool` + analysis venv → verify: unit tests — code runs with timeout and output caps; `import arcengine` and `import arc_agi` fail in the agent's interpreter.
 4. `plan_parser` → verify: unit tests — valid plans; malformed JSON; unavailable actions; ACTION6 missing/out-of-bounds/non-integer coordinates; empty plan; duplicate `[ACTIONS]` blocks; truncated output (finish reason = max_tokens); plan longer than remaining action budget.
 5. Runner with **fake env + fake model** unit tests → verify: queue drains with zero model calls; mid-drain `available_actions` mismatch truncates and re-invokes; `levels_completed`/`state` transitions interrupt; parse-retry limit; `GAME_OVER` → RESET counts toward the action cap (no infinite reset loop); `WIN`, action-cap, and cost-cap stops; `resume_state` round-trip across invocations; fresh-session threshold drops the transcript but the next prompt points at `log.txt`.
    5a. `caching.py` → verify: two consecutive live invocations on Sonnet; assert `cached_tokens > 0` (via `RunUsage` / the `gen_ai.usage.cache_read.input_tokens` tracing attribute) on the second. **Gate: no paid pilot runs until this passes.**
-6. Leakage acceptance test in the real run env (see Containment) → verify: all escape attempts fail; the check's output is written into every run's artifacts.
-7. End-to-end with Sonnet on **local** ls20 → verify: completes ≥1 level or exhausts the action cap without a crash; transcript and `metrics.json` (actions, invocations, tokens, cached tokens, cost) written.
-8. Switch to API mode (`.env` key) → verify: one short API run on ft09 matches local-mode behavior (same log format, same loop).
+6. End-to-end with Sonnet on **local** ls20 → verify: completes ≥1 level or exhausts the action cap without a crash; transcript and `metrics.json` (actions, invocations, tokens, cached tokens, cost) written; the step-3 `import arcengine` check output is included in the run artifacts.
+7. Switch to API mode (`.env` key) → verify: one short API run on ft09 matches local-mode behavior (same log format, same loop).
 
 ## Pilot protocol
 
@@ -99,7 +94,7 @@ Budget: ~8 games × ~$40–60 ≈ **$350–500** assuming verified caching (step
 
 - **Version drift**: demo-set games differ from the preview versions RGB played (different version hashes); expect approximate, not exact, reproduction in Phase A.
 - **Variance**: RGB reports some vc33 runs plateau at level 5 with 1,500+ actions. One run per game means noisy conclusions; hence the Phase A re-run reserve.
-- **Leakage invalidates everything**: engine source is on disk in every mode (hard `arcengine` dependency). Mitigated by the three-layer containment and step 6's mechanism-level acceptance test recorded in every run's artifacts.
+- **Leakage invalidates results**: engine source is on disk in every mode (hard `arcengine` dependency). Mitigated by the analysis-venv design (step 3), with the import check recorded in every run's artifacts; host-file and network reachability are accepted for the pilot and noted alongside any reported numbers.
 - **In-context grid brittleness**: RGB's own finding — the prompt must push all spatial work into python over `log.txt`, never eyeballing full boards in-context.
 - **Comparability**: our GAME_OVER→RESET protocol matches baseline1's (attempt resets, no whole-game restarts), but RGB's preview-era runs may differ; note protocol in all reported numbers.
 
