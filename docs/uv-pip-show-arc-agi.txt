@@ -1,0 +1,21 @@
+Name: arc-agi
+Version: 0.9.9
+Location: /Users/ryanbrown/code/arc3-thinharness/.venv/lib/python3.12/site-packages
+Requires: arcengine, flask, matplotlib, pillow, pydantic, python-dotenv, requests
+Required-by: arc3
+Files:
+  arc_agi-0.9.9.dist-info/INSTALLER
+  arc_agi-0.9.9.dist-info/METADATA
+  arc_agi-0.9.9.dist-info/RECORD
+  arc_agi-0.9.9.dist-info/REQUESTED
+  arc_agi-0.9.9.dist-info/WHEEL
+  arc_agi/__init__.py
+  arc_agi/api.py
+  arc_agi/base.py
+  arc_agi/local_wrapper.py
+  arc_agi/models.py
+  arc_agi/remote_wrapper.py
+  arc_agi/rendering.py
+  arc_agi/scorecard.py
+  arc_agi/server.py
+  arc_agi/wrapper.py
