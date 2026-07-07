@@ -1,0 +1,53 @@
+[project]
+name = "arc3"
+version = "0.1.0"
+description = "RGB-style ARC-AGI-3 agent on thinharness"
+requires-python = ">=3.12"
+dependencies = [
+    "arc-agi",
+    "thinharness",
+    "pydantic>=2",
+]
+
+[project.scripts]
+arc3-run = "arc3.runner:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "pyright",
+]
+
+[tool.uv.sources]
+thinharness = { path = "../thinharness", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arc3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 140
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Prompt prose reads as whole lines; length limits do not apply.
+"src/arc3/prompts.py" = ["E501"]
+
+[tool.pyright]
+include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
+# The editable thinharness install uses a dynamic finder pyright cannot follow.
+extraPaths = ["../thinharness"]

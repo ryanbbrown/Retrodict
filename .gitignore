@@ -20,3 +20,7 @@ runs/
 
 .reviews/*
 !.reviews/.gitkeep
+
+environment_files/
+recordings/
+analysis_venv/
