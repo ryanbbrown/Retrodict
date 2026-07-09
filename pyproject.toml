@@ -7,6 +7,7 @@ dependencies = [
     "arc-agi",
     "thinharness",
     "pydantic>=2",
+    "openai>=2.44.0",
 ]
 
 [project.scripts]

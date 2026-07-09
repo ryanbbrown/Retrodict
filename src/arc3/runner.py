@@ -43,6 +43,17 @@ PRICING = {
     # gpt-5-mini no longer appears on the pricing page (superseded by
     # gpt-5.4-mini); this is its last published rate.
     "openai:gpt-5-mini": ModelPricing(0.25, 0.025, 2.0),
+    # Model-comparison candidates. OpenRouter rates read from its /models API on
+    # 2026-07-08; OpenRouter sends no cache hints on the chat path, so cached is
+    # set equal to input (no assumed discount) rather than understating cost.
+    "openrouter:minimax/minimax-m3": ModelPricing(0.30, 0.30, 1.20),
+    "openrouter:x-ai/grok-4.3": ModelPricing(1.25, 1.25, 2.50),
+    "openrouter:moonshotai/kimi-k2.6": ModelPricing(0.66, 0.66, 3.41),
+    "openrouter:z-ai/glm-5.2": ModelPricing(0.93, 0.93, 3.00),
+    # Native Anthropic; the harness enables prompt caching, so cached uses the
+    # published 0.1x cache-read rate (mirrors the gpt-5.5 cached ratio).
+    "anthropic:claude-sonnet-5": ModelPricing(2.0, 0.20, 10.0),
+    "anthropic:claude-opus-4-8": ModelPricing(5.0, 0.50, 25.0),
 }
 
 
@@ -62,6 +73,10 @@ class RunnerConfig:
     max_model_requests: int = 128
     request_timeout: int = 600
     pricing: ModelPricing | None = None
+    # Optional image-priming: a vision model reads a render of the opening frame
+    # and its answer is injected into the first prompt as a hypothesis to verify.
+    image_prime: bool = False
+    vision_model: str = "gpt-5.5"
 
     def resolve_pricing(self) -> ModelPricing:
         pricing = self.pricing or PRICING.get(self.model)
@@ -104,9 +119,9 @@ class ThinAgentClient:
     def __init__(self, cfg: RunnerConfig, workspace: Path, trace_dir: Path, *, analysis_python: Path = ANALYSIS_PYTHON) -> None:
         from thinharness import Harness, HarnessConfig
 
-        extra_body: dict[str, Any] = {"max_output_tokens": cfg.max_output_tokens}
-        if cfg.reasoning_effort is not None:
-            extra_body["reasoning"] = {"effort": cfg.reasoning_effort}
+        # Provider-neutral settings; thinharness translates them to each provider's
+        # dialect (OpenAI max_output_tokens+reasoning.effort, OpenRouter
+        # max_tokens+reasoning.effort, Anthropic max_tokens+output_config.effort).
         config = HarnessConfig(
             root=workspace,
             model=cfg.model,
@@ -114,7 +129,8 @@ class ThinAgentClient:
             builtin_tools=["read", "search"],
             max_model_requests=cfg.max_model_requests,
             request_timeout=cfg.request_timeout,
-            extra_body=extra_body,
+            max_tokens=cfg.max_output_tokens,
+            effort=cfg.reasoning_effort,
             local_trace_dir=trace_dir,
         )
         self.harness = Harness(config, tools=[PythonTool(workspace, analysis_python).spec()])
@@ -194,6 +210,7 @@ class GameRunner:
         self.frame: Any = None
         self.resume_requested = resume
         self.resumed_at_actions: int | None = None
+        self.prime_note: str | None = None
 
     async def run(self) -> dict[str, Any]:
         """Play until WIN, a cap, or a failure; return (and write) metrics."""
@@ -201,6 +218,8 @@ class GameRunner:
 
         started = time.time()
         stop_reason = self._restore() if self.resume_requested else self._start_fresh()
+        if stop_reason is None and self.cfg.image_prime and not self.resume_requested:
+            self._image_prime()
         if stop_reason is None:
             try:
                 stop_reason = await self._loop("resumed" if self.resume_requested else "start")
@@ -219,6 +238,27 @@ class GameRunner:
         self.state.actions_taken += 1
         self._log_frame("RESET")
         return None
+
+    def _image_prime(self) -> None:
+        """Ask a vision model to read the opening frame; store its answer for the first prompt.
+
+        Best-effort: priming is an optional aid, so any failure degrades to an
+        unprimed run (prime_note stays None) rather than aborting the game.
+        """
+        from . import vision
+
+        try:
+            board = _board_lists(self.frame.frame[-1])
+            note, png = vision.describe_opening(board, model=self.cfg.vision_model)
+        except Exception as exc:  # noqa: BLE001 - priming must never fail the run
+            self.state.invocation_log.append({"image_prime_error": str(exc)})
+            return
+        self.prime_note = note
+        (self.run_dir / "opening.png").write_bytes(png)
+        (self.run_dir / "prime.json").write_text(
+            json.dumps({"vision_model": self.cfg.vision_model, "prompt": vision.PROMPT, "description": note}, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     def _restore(self) -> str | None:
         """Rebuild env state by replaying the logged actions; continue accounting.
@@ -303,7 +343,7 @@ class GameRunner:
             reason_text = f"{reason_text} ({self.state.surprise_note})"
             self.state.surprise_note = None
         if self.state.invocations == 0:
-            return prompts.initial_prompt(self.cfg.game_id), None
+            return prompts.initial_prompt(self.cfg.game_id, self.prime_note), None
         if self.state.resume_state is None or self.state.context_tokens > self.cfg.fresh_session_input_tokens:
             self.state.fresh_sessions += 1
             return prompts.fresh_session_prompt(self.cfg.game_id, self.state.step_no, reason_text), None
@@ -451,7 +491,13 @@ class GameRunner:
 
     def _cost(self) -> float:
         state = self.state
-        uncached = state.input_tokens - state.cached_tokens
+        # Providers disagree on what input_tokens counts: OpenAI/OpenRouter report
+        # the full prompt (cached is a subset, so subtract it out), while Anthropic
+        # reports only the uncached remainder (cache reads are counted separately).
+        if self.cfg.model.startswith("anthropic:"):
+            uncached = state.input_tokens
+        else:
+            uncached = state.input_tokens - state.cached_tokens
         return (
             uncached * self.pricing.input_per_mtok + state.cached_tokens * self.pricing.cached_per_mtok
             + state.output_tokens * self.pricing.output_per_mtok
@@ -463,6 +509,7 @@ class GameRunner:
             "game_id": self.cfg.game_id,
             "model": self.cfg.model,
             "reasoning_effort": self.cfg.reasoning_effort,
+            "image_prime": self.cfg.image_prime,
             "stop_reason": stop_reason,
             "state": self.frame.state.value if self.frame is not None else None,
             "levels_completed": self.frame.levels_completed if self.frame is not None else None,
@@ -561,6 +608,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--cost-cap", type=float, default=80.0)
     parser.add_argument("--runs-dir", type=Path, default=REPO_ROOT / "runs")
     parser.add_argument("--resume", type=Path, default=None, help="existing run dir to continue (replays the log, then a fresh session)")
+    parser.add_argument("--image-prime", action="store_true", help="prime prompt 1 with a vision model's read of the opening frame")
+    parser.add_argument("--vision-model", default="gpt-5.5", help="OpenAI vision model for --image-prime")
     args = parser.parse_args(argv)
 
     cfg = RunnerConfig(
@@ -569,6 +618,8 @@ def main(argv: list[str] | None = None) -> None:
         reasoning_effort=None if args.effort == "none" else args.effort,
         action_cap=args.action_cap,
         cost_cap_usd=args.cost_cap,
+        image_prime=args.image_prime,
+        vision_model=args.vision_model,
     )
     metrics = asyncio.run(run_game(cfg, args.runs_dir, mode=args.mode, resume_dir=args.resume))
     print(json.dumps({k: v for k, v in metrics.items() if k != "invocation_log"}, indent=2))

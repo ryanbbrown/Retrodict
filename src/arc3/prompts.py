@@ -53,12 +53,22 @@ The plan is executed one action per game step with no further calls to you; you 
 Expectations make wrong plans cheap: an action may include "expect" — cells as [x, y, color] that the settled board must show after it — and the plan may include "expect_levels", the levels_completed count after the final action. The first failed expectation stops execution immediately and you are re-invoked with the mismatch, instead of the rest of the plan running on a falsified premise. State expectations whenever you are executing a solution you believe in; omit them while probing."""
 
 
-def initial_prompt(game_id: str) -> str:
-    """First invocation of a run."""
-    return (
+def initial_prompt(game_id: str, prime_note: str | None = None) -> str:
+    """First invocation of a run; prime_note is an optional vision-model read of the opening frame."""
+    base = (
         f"You are starting a fresh run of game '{game_id}'. log.txt contains step 0 (the initial board after RESET). "
         "Inspect it, then reply with your analysis and your first [ACTIONS] block."
     )
+    if prime_note:
+        base += (
+            "\n\n## An outside vision model's read of the opening frame\n\n"
+            "Before you started, a separate vision model was shown a rendered image of this initial board "
+            "and asked what it sees and what the goal might be. Its answer follows. Treat it as one hypothesis "
+            "to test against log.txt, not as ground truth — verify every claim by retrodiction before spending "
+            "actions on it:\n\n"
+            f"{prime_note}"
+        )
+    return base
 
 
 def reinvoke_prompt(reason: str, first_new_step: int, last_step: int) -> str:

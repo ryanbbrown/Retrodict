@@ -24,3 +24,8 @@ runs/
 environment_files/
 recordings/
 analysis_venv/
+.gstack/
+
+kaggle_corpus/
+.html/
+data/
