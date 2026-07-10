@@ -26,6 +26,18 @@ def test_system_prompt_documents_diff_arclog_scratch_and_hud_guidance() -> None:
     assert "never treat a timeout as evidence that no solution exists" in prompt
 
 
+def test_system_prompt_prescribes_explore_then_commit_cadence() -> None:
+    """Weak models thrash by advancing a known mechanic one action per reply; the prompt must
+    make the strong-model rhythm explicit — probe once, then batch predicted moves — or the
+    fix silently disappears and single-action stalling returns."""
+    prompt = prompts.SYSTEM_PROMPT
+
+    assert "Explore, then commit" in prompt
+    # a single action is a probe, not a way to walk through a mechanic you already understand
+    assert "single-action plan is only for a deliberate probe" in prompt
+    assert "do not advance it one action at a time" in prompt
+
+
 def test_invocation_prompts_nudge_agents_to_use_arclog_and_diff() -> None:
     assert "import arclog; steps = arclog.load()" in prompts.initial_prompt("ft09")
     assert "Read [DIFF] first" in prompts.reinvoke_prompt("queue empty", 1, 2)
