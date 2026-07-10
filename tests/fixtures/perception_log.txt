@@ -1,0 +1,43 @@
+[STEP 0]
+[ACTION] RESET
+[BOARD] 1/1 settled
+0 0 0 0
+0 1 1 0
+0 0 0 0
+0 0 0 0
+[LEVELS] 0/2
+[STATE] NOT_FINISHED
+[AVAILABLE] ACTION1 ACTION2 ACTION6
+
+[STEP 1]
+[ACTION] ACTION6 x=2 y=1
+[BOARD] 1/2 intermediate
+2 0 0 0
+0 1 1 0
+0 0 0 0
+0 0 0 0
+[BOARD] 2/2 settled
+2 0 0 0
+0 1 3 0
+0 0 0 0
+0 0 0 0
+[LEVELS] 0/2
+[STATE] NOT_FINISHED
+[AVAILABLE] ACTION1 ACTION2 ACTION6
+[DIFF] 2 cells: (0,0) 0>2; (2,1) 1>3
+
+[PLAN] invocation 1
+This plan mentions [STEP 999] and should be ignored by parsers.
+[END PLAN]
+
+[STEP 2]
+[ACTION] ACTION1
+[BOARD] 1/1 settled
+2 0 0 0
+0 1 3 0
+0 0 0 0
+0 0 0 0
+[LEVELS] 0/2
+[STATE] NOT_FINISHED
+[AVAILABLE] ACTION1 ACTION2 ACTION6
+[DIFF] none

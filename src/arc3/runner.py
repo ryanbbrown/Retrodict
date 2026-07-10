@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from . import prompts
-from .logwriter import LogWriter, StepRecord, action_name, parse_log
+from .logwriter import LogWriter, StepRecord, action_name, diff_boards, parse_log
 from .plan_parser import ParsedPlan, PlannedAction, PlanParseError, parse_actions
 from .tools import PythonArgs, PythonTool
 
@@ -40,6 +40,11 @@ class ModelPricing:
 # Verified against developers.openai.com/api/docs/pricing on 2026-07-05.
 PRICING = {
     "openai:gpt-5.5": ModelPricing(5.0, 0.5, 30.0),
+    # GPT-5.6 family, GA 2026-07-09; slugs verified against OpenAI /v1/models and
+    # rates from the pricing page. Cache reads keep the 0.1x discount like gpt-5.5.
+    "openai:gpt-5.6-sol": ModelPricing(5.0, 0.5, 30.0),
+    "openai:gpt-5.6-terra": ModelPricing(2.5, 0.25, 15.0),
+    "openai:gpt-5.6-luna": ModelPricing(1.0, 0.10, 6.0),
     # gpt-5-mini no longer appears on the pricing page (superseded by
     # gpt-5.4-mini); this is its last published rate.
     "openai:gpt-5-mini": ModelPricing(0.25, 0.025, 2.0),
@@ -425,6 +430,7 @@ class GameRunner:
 
         prev_levels = self.frame.levels_completed
         prev_state = self.frame.state
+        prev_settled = _board_lists(self.frame.frame[-1])
         data = {"x": action.x, "y": action.y} if action.name == "ACTION6" else None
         frame = self.env.step(GameAction.from_name(action.name), data)
         if frame is None:
@@ -432,7 +438,7 @@ class GameRunner:
         self.frame = frame
         self.state.actions_taken += 1
         self.state.step_no += 1
-        self._log_frame(action.name, x=action.x, y=action.y)
+        self._log_frame(action.name, x=action.x, y=action.y, prior_settled=None if action.name == "RESET" else prev_settled)
         state = frame.state.value
         if state == "WIN":
             return "win"
@@ -471,20 +477,30 @@ class GameRunner:
         self._log_frame("RESET")
         return "game_over"
 
-    def _log_frame(self, action: str, *, x: int | None = None, y: int | None = None) -> None:
+    def _log_frame(
+        self,
+        action: str,
+        *,
+        x: int | None = None,
+        y: int | None = None,
+        prior_settled: list[list[int]] | None = None,
+    ) -> None:
         frame = self.frame
+        frames = [_board_lists(board) for board in frame.frame]
+        diff = diff_boards(prior_settled, frames[-1]) if prior_settled is not None else None
         self.log.append_step(
             StepRecord(
                 step=self.state.step_no,
                 action=action,
-                frames=[_board_lists(board) for board in frame.frame],
+                frames=frames,
                 levels_completed=frame.levels_completed,
                 win_levels=frame.win_levels,
                 state=frame.state.value,
                 available_actions=list(frame.available_actions),
                 x=x,
                 y=y,
-            )
+            ),
+            diff=diff,
         )
 
     # -- accounting ----------------------------------------------------------

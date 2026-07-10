@@ -8,6 +8,7 @@ dependencies = [
     "thinharness",
     "pydantic>=2",
     "openai>=2.44.0",
+    "numpy>=2",
 ]
 
 [project.scripts]

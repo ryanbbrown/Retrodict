@@ -5,7 +5,9 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from arc3.logwriter import LogWriter, StepRecord, action_name, parse_log
+from arc3.logwriter import LogWriter, StepRecord, action_name, diff_boards, format_diff, parse_log
+
+FIXTURE_LOG = Path(__file__).resolve().parent / "fixtures" / "perception_log.txt"
 
 
 def record_from_frame(step: int, action: str, frame, x: int | None = None, y: int | None = None) -> StepRecord:
@@ -101,3 +103,59 @@ def test_plan_blocks_are_skipped_by_the_parser(tmp_path: Path) -> None:
 
     parsed = parse_log((tmp_path / "log.txt").read_text(encoding="utf-8"))
     assert parsed == [record]
+
+
+def test_diff_boards_uses_column_row_ordering() -> None:
+    before = [[0, 0, 0], [0, 1, 0]]
+    after = [[0, 9, 0], [0, 1, 7]]
+
+    assert diff_boards(before, after) == [(1, 0, 0, 9), (2, 1, 0, 7)]
+
+
+def test_append_step_writes_listed_none_and_summarized_diffs(tmp_path: Path) -> None:
+    writer = LogWriter(tmp_path / "log.txt")
+    record = StepRecord(
+        step=1,
+        action="ACTION1",
+        frames=[[[0] * 8 for _ in range(8)]],
+        levels_completed=0,
+        win_levels=3,
+        state="NOT_FINISHED",
+        available_actions=[1],
+    )
+
+    writer.append_step(record, diff=[(2, 1, 0, 5), (3, 1, 5, 0)])
+    writer.append_step(record, diff=[])
+    large = [(x, y, 0, 1) for y in range(7) for x in range(6)]
+    writer.append_step(record, diff=large)
+
+    text = (tmp_path / "log.txt").read_text(encoding="utf-8")
+    assert "[DIFF] 2 cells: (2,1) 0>5; (3,1) 5>0" in text
+    assert "[DIFF] none" in text
+    assert "[DIFF] 42 cells changed in bbox (0,0)-(5,6)" in text
+
+
+def test_format_diff_threshold() -> None:
+    listed = [(x, 0, 0, 1) for x in range(40)]
+    summarized = [(x, 0, 0, 1) for x in range(41)]
+
+    assert format_diff(listed).startswith("[DIFF] 40 cells: ")
+    assert format_diff(summarized) == "[DIFF] 41 cells changed in bbox (0,0)-(40,0)"
+
+
+def test_parse_log_skips_diff_lines_from_shared_golden_fixture() -> None:
+    records = parse_log(FIXTURE_LOG.read_text(encoding="utf-8"))
+
+    assert [record.step for record in records] == [0, 1, 2]
+    assert records[1].frames[-1] == [[2, 0, 0, 0], [0, 1, 3, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    assert records[1] == StepRecord(
+        step=1,
+        action="ACTION6",
+        frames=[[[2, 0, 0, 0], [0, 1, 1, 0], [0, 0, 0, 0], [0, 0, 0, 0]], [[2, 0, 0, 0], [0, 1, 3, 0], [0, 0, 0, 0], [0, 0, 0, 0]]],
+        levels_completed=0,
+        win_levels=2,
+        state="NOT_FINISHED",
+        available_actions=[1, 2, 6],
+        x=2,
+        y=1,
+    )

@@ -11,8 +11,9 @@ import numpy as np
 import pytest
 from arcengine import FrameDataRaw, GameState
 
+from arc3.logwriter import diff_boards, parse_log
 from arc3.plan_parser import PlanParseError, parse_actions
-from arc3.runner import AgentClient, AgentReply, GameRunner, ModelPricing, RunnerConfig
+from arc3.runner import AgentClient, AgentReply, GameRunner, ModelPricing, RunnerConfig, run_game
 
 
 def make_frame(
@@ -24,6 +25,11 @@ def make_frame(
 ) -> FrameDataRaw:
     frame = FrameDataRaw(state=state, levels_completed=levels, win_levels=win, available_actions=list(available))
     frame.frame = [np.zeros((64, 64), dtype=int) for _ in range(boards)]
+    return frame
+
+
+def with_cell(frame: FrameDataRaw, x: int, y: int, color: int) -> FrameDataRaw:
+    frame.frame[-1][y, x] = color
     return frame
 
 
@@ -127,6 +133,43 @@ async def test_queue_drains_with_zero_model_calls_and_win_stops(tmp_path: Path) 
     log_text = (tmp_path / "run" / "workspace" / "log.txt").read_text()
     assert log_text.count("[STEP ") == 5
     assert log_text.count("[PLAN]") == 2
+
+
+async def test_runner_logs_settled_board_diff_for_live_actions(tmp_path: Path) -> None:
+    env = FakeEnv([make_frame()], [with_cell(make_frame(state=GameState.WIN, levels=7), 2, 1, 5)])
+    agent = FakeAgent([reply(plan_text("ACTION1"))])
+    runner = make_runner(tmp_path, env, agent)
+
+    await runner.run()
+
+    log_text = (tmp_path / "run" / "workspace" / "log.txt").read_text(encoding="utf-8")
+    assert "[STEP 0]\n[ACTION] RESET" in log_text
+    assert "[DIFF] 1 cells: (2,1) 0>5" in log_text
+    assert log_text.count("[DIFF]") == 1
+
+
+async def test_runner_logs_no_op_diff_when_action_changes_no_cells(tmp_path: Path) -> None:
+    env = FakeEnv([make_frame()], [make_frame(state=GameState.WIN, levels=7)])
+    agent = FakeAgent([reply(plan_text("ACTION1"))])
+    runner = make_runner(tmp_path, env, agent)
+
+    await runner.run()
+
+    log_text = (tmp_path / "run" / "workspace" / "log.txt").read_text(encoding="utf-8")
+    assert "[DIFF] none" in log_text
+
+
+async def test_runner_omits_diff_for_agent_planned_reset(tmp_path: Path) -> None:
+    env = FakeEnv([make_frame()], [with_cell(make_frame(state=GameState.WIN, levels=7), 1, 1, 9)])
+    agent = FakeAgent([reply(plan_text("RESET"))])
+    runner = make_runner(tmp_path, env, agent)
+
+    await runner.run()
+
+    log_text = (tmp_path / "run" / "workspace" / "log.txt").read_text(encoding="utf-8")
+    assert log_text.count("[STEP ") == 2
+    assert "[STEP 1]\n[ACTION] RESET" in log_text
+    assert "[DIFF]" not in log_text
 
 
 async def test_mid_drain_unavailable_action_truncates_queue_and_reinvokes(tmp_path: Path) -> None:
@@ -376,24 +419,31 @@ def write_resume_artifacts(run_dir: Path, frames: list, prior_metrics: dict[str,
     workspace = run_dir / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     writer = LogWriter(workspace / "log.txt")
+    prior_settled = None
     for step, (action, frame) in enumerate(frames):
+        current_frames = [board.tolist() for board in frame.frame]
+        diff = None
+        if prior_settled is not None:
+            diff = diff_boards(prior_settled, current_frames[-1])
         writer.append_step(
             StepRecord(
                 step=step,
                 action=action,
-                frames=[board.tolist() for board in frame.frame],
+                frames=current_frames,
                 levels_completed=frame.levels_completed,
                 win_levels=frame.win_levels,
                 state=frame.state.value,
                 available_actions=list(frame.available_actions),
-            )
+            ),
+            diff=diff,
         )
+        prior_settled = current_frames[-1]
     if prior_metrics is not None:
         (run_dir / "metrics.json").write_text(json.dumps(prior_metrics), encoding="utf-8")
 
 
 async def test_resume_replays_the_log_and_continues_with_a_fresh_session(tmp_path: Path) -> None:
-    frame_a, frame_b = make_frame(), make_frame(levels=1)
+    frame_a, frame_b = make_frame(), with_cell(make_frame(levels=1), 4, 3, 8)
     write_resume_artifacts(
         tmp_path / "run",
         [("RESET", frame_a), ("ACTION1", frame_b)],
@@ -404,6 +454,7 @@ async def test_resume_replays_the_log_and_continues_with_a_fresh_session(tmp_pat
     cfg = RunnerConfig(game_id="fake", model="fake:model", pricing=ModelPricing(1.0, 0.1, 10.0))
     runner = GameRunner(env, agent, cfg, tmp_path / "run", resume=True)
 
+    assert "[DIFF] 1 cells: (4,3) 0>8" in (tmp_path / "run" / "workspace" / "log.txt").read_text(encoding="utf-8")
     metrics = await runner.run()
 
     assert metrics["stop_reason"] == "win"
@@ -416,6 +467,7 @@ async def test_resume_replays_the_log_and_continues_with_a_fresh_session(tmp_pat
     assert metrics["invocations"] == 6
     assert metrics["surprises"] == 1
     assert metrics["cost_usd"] > 0.75  # prior tokens count toward the cumulative cost
+    assert parse_log((tmp_path / "run" / "workspace" / "log.txt").read_text(encoding="utf-8"))[-1].action == "ACTION2"
 
 
 async def test_resume_aborts_when_the_replay_diverges_from_the_log(tmp_path: Path) -> None:
@@ -443,6 +495,28 @@ async def test_resume_from_a_game_over_tail_issues_the_reset(tmp_path: Path) -> 
     assert metrics["stop_reason"] == "win"
     assert env.resets == 2  # replay reset + post-GAME_OVER reset
     assert metrics["actions"] == 4  # 2 replayed + reset + 1 new
+
+
+async def test_run_game_copies_workspace_template_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import arc3.runner as runner_module
+
+    class DummyClient:
+        def __init__(self, cfg, workspace, trace_dir):
+            self.workspace = workspace
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(runner_module, "containment_check", lambda workspace: {"contained": True})
+    monkeypatch.setattr(runner_module, "open_environment", lambda game_id, run_dir, mode: FakeEnv([make_frame()], []))
+    monkeypatch.setattr(runner_module, "ThinAgentClient", DummyClient)
+    cfg = RunnerConfig(game_id="fake", model="fake:model", pricing=ModelPricing(1.0, 0.1, 10.0), action_cap=1)
+
+    metrics = await run_game(cfg, tmp_path)
+
+    workspace = Path(metrics["run_dir"]) / "workspace"
+    assert (workspace / "arclog.py").exists()
+    assert (workspace / "scratch" / "__init__.py").exists()
 
 
 def test_available_actions_validation_uses_the_current_frame() -> None:

@@ -48,6 +48,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "arc-agi" },
+    { name = "numpy" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "thinharness" },
@@ -64,6 +65,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "arc-agi" },
+    { name = "numpy", specifier = ">=2" },
     { name = "openai", specifier = ">=2.44.0" },
     { name = "pydantic", specifier = ">=2" },
     { name = "thinharness", editable = "../thinharness" },

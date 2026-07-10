@@ -44,6 +44,9 @@ def test_timeout_kills_the_process(tmp_path: Path, analysis_python: Path) -> Non
     assert not result.ok
     assert result.metadata["error_type"] == "Timeout"
     assert result.metadata["timed_out"] is True
+    # the timeout signal must be in content, not just metadata, so the model reads it
+    assert "TIMED OUT" in result.content
+    assert "too large" in result.content
 
 
 def test_output_is_capped(tmp_path: Path, analysis_python: Path) -> None:

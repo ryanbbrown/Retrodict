@@ -1,6 +1,6 @@
 # arc3-thinharness
 
-RGB-style ARC-AGI-3 agent on [thinharness](../thinharness): the agent reads an append-only `log.txt` of everything that happened (actions, 64×64 boards, levels, state) with read/search/python tools and replies with an `[ACTIONS]` JSON plan; a queue drains the plan one action per game step with zero LLM calls. Plan and pilot protocol: `.plans/01-rgb-style-pilot.md`.
+RGB-style ARC-AGI-3 agent on [thinharness](../thinharness): the agent reads an append-only `log.txt` of everything that happened (actions, 64×64 boards, derived `[DIFF]` markers, levels, state) with read/search/python tools and replies with an `[ACTIONS]` JSON plan; a queue drains the plan one action per game step with zero LLM calls. Plan and pilot protocol: `.plans/01-rgb-style-pilot.md`.
 
 ## Setup
 
@@ -18,7 +18,11 @@ uv run --env-file ../thinharness/.env arc3-run ls20 --model openai:gpt-5-mini --
 uv run --env-file ../thinharness/.env arc3-run ft09                                                                         # pilot run (gpt-5.5 high, caps 2000/$80)
 ```
 
-Games download into `environment_files/` on first use and run locally in-process (`--mode online` plays the real API instead). Per-run artifacts land in `runs/<game>/<timestamp>/`: `workspace/log.txt`, `transcript.jsonl`, `metrics.json`, `containment.json`, `traces/`.
+Games download into `environment_files/` on first use and run locally in-process (`--mode online` plays the real API instead). Per-run artifacts land in `runs/<game>/<timestamp>/`: `workspace/log.txt`, `workspace/arclog.py`, `workspace/scratch/`, `transcript.jsonl`, `metrics.json`, `containment.json`, `traces/`.
+
+Each non-reset live action gets a derived settled-board diff in `log.txt`: `[DIFF] none` for no board-cell change, a short `(x,y) old>new` list for up to 40 changed cells, or a count plus bounding box for large transitions. `StepRecord` stays the raw observation contract; `[DIFF]` is skipped by the replay parser and recomputed for new live steps after resume.
+
+`workspace/arclog.py` is copied from `workspace_template/` into every fresh run. Agents should `import arclog` from the python tool for log parsing, settled-board diffs, and connected components instead of rewriting those helpers. Game-specific helper code can be written under `workspace/scratch/` and imported by later python calls; it runs in the same contained analysis venv, so `arc-agi` and `arcengine` remain unavailable.
 
 ## Tests
 
@@ -35,4 +39,4 @@ uv run ruff check src tests && uv run pyright
 - `src/arc3/plan_parser.py` — extract/validate the `[ACTIONS]` block
 - `src/arc3/tools.py` — `PythonTool`: direct argv exec in the analysis venv
 - `src/arc3/prompts.py` — system + re-invocation prompts (adapted from RGB-Agent's published design)
-- `workspace_template/` — copied to each run's workspace
+- `workspace_template/` — copied to each run's workspace (`arclog.py`, `scratch/`)

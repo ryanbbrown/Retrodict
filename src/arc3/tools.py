@@ -31,7 +31,7 @@ class PythonArgs(StrictArgs):
     """Arguments for python."""
 
     code: str
-    timeout: int = Field(default=30, ge=1, le=120)
+    timeout: int = Field(default=30, ge=1, le=30)
 
 
 class PythonTool:
@@ -89,4 +89,11 @@ class PythonTool:
             metadata["error_type"] = "Timeout"
         elif exit_code != 0:
             metadata["error_type"] = "NonZeroExit"
-        return ToolResult(ok, _format_output(stdout, stderr), metadata)
+        content = _format_output(stdout, stderr)
+        if timed_out:
+            content = (
+                f"TIMED OUT after {metadata['duration_seconds']}s (budget {args.timeout}s): the computation was too large to "
+                "finish. Shrink the search space or switch to a cheaper method before retrying — a similar-sized retry will "
+                "time out the same way. A timeout does not mean no solution exists.\n\n" + content
+            )
+        return ToolResult(ok, content, metadata)

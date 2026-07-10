@@ -21,6 +21,7 @@ Everything that has happened lives in the append-only file log.txt in your works
 [LEVELS] c/w        - levels completed / levels needed to win
 [STATE] s           - NOT_FINISHED, WIN, or GAME_OVER
 [AVAILABLE] ...     - the actions currently available
+[DIFF] ...          - derived settled-board changes from the previous step; "none" means no board cell changed
 [PLAN] ...          - your own earlier stated plans ([END PLAN] closes them)
 
 ## Tools
@@ -28,10 +29,27 @@ Everything that has happened lives in the append-only file log.txt in your works
 - read: read file ranges (useful for recent log entries)
 - search: ripgrep the workspace (grep [STEP or [LEVELS markers to navigate the log)
 - python: run a python3 script (numpy/scipy/networkx) with the workspace as cwd
+- arclog: import arclog in python for log parsing, settled-board diffs, and object segmentation; prefer it over rewriting parsers
+- reusable code: write game-specific helpers under scratch/ and import them from later python calls
+
+## arclog helper API
+
+Import it in the python tool: `import arclog`. Boards are numpy int arrays indexed as `board[y, x]` (row y, column x) — use `b.shape`, `np.where(b == c)`, `(b == c).sum()` instead of hand-written loops.
+
+- `steps = arclog.load()` -> list of Step, one per [STEP] in log.txt, in order.
+- Step fields:
+  - `.board` — settled board, a numpy int array of shape (64, 64) (alias `.settled`); `.frames` — all animation frames, shape (k, 64, 64), where `.frames[-1]` is `.board`.
+  - `.action`, `.x`, `.y` — the action taken this step (x, y set for ACTION6); `.available` — action names valid then; `.levels_completed`, `.win_levels`, `.state`.
+  - `.diff` — `[(x, y, old, new), ...]` cells changed vs the previous settled board; `[]` means nothing changed, `None` means the log summarized a large diff (see `.diff_count`, `.diff_bbox`).
+- `arclog.diff(a, b)` -> `[(x, y, old, new), ...]` cells where boards a and b differ.
+- `arclog.objects(board, colors=None, connectivity=4)` -> list of Object connected components (color 0 is background unless you pass `colors=0`). Object: `.color`, `.cells` `[(x, y), ...]`, `.bbox` `(x0, y0, x1, y1)`, `.size` (=`.count`), `.centroid` `(cx, cy)`, `.hash` (translation-invariant, so the same shape and color hash equal anywhere on the board).
 
 ## Method
 
-- Do all spatial work in python over log.txt: parse boards into 2-D arrays, diff consecutive boards to see exactly what an action changed, locate objects, count cells. Never eyeball full 64x64 boards in your reply; boards at full scale are easy to misread.
+- Do all spatial work in python over log.txt: use arclog.load(), arclog.diff(), and arclog.objects() to parse boards, inspect changes, locate objects, and count cells. Never eyeball full 64x64 boards in your reply; boards at full scale are easy to misread.
+- Searching in python (for a move sequence, a placement, or a configuration): prefer constructing a solution incrementally — one piece or step at a time toward the goal, or greedily by a scoring heuristic — over enumerating whole candidate solutions, which explodes combinatorially. Before running any search, estimate its cost as roughly (candidates ^ choices) times the work per validity check; if that is large, bound it with an explicit iteration or wall-time cap inside the loop and print progress with flush=True so a cutoff still yields partial results. A timed-out call means the search was too big — shrink it or switch methods rather than retrying a similar-sized search, and never treat a timeout as evidence that no solution exists.
+- After each action, read [DIFF] before recomputing anything: if it says none, the action changed no board cells; otherwise use it as the first clue about what the action affected.
+- A full-width or full-height line of cells hugging a border that changes on most steps is usually a timer, step-budget bar, or status strip, not gameplay. Do not treat changes confined to that edge/HUD strip as evidence that an action worked, and do not click through its segments as if they were pieces.
 - Form explicit hypotheses about what each action does and what the goal is; test the cheapest discriminating action next. When evidence contradicts a hypothesis, drop it — do not lock in early.
 - Hypotheses are cheap to test against history and expensive to test with actions. Before building a plan on a hypothesis, retrodict it: check with python that it reproduces every relevant recorded frame in log.txt. A hypothesis contradicted by any recorded frame is falsified — revise it without spending game actions. Spend actions only to discriminate between hypotheses that survive retrodiction.
 - A level completes when [LEVELS] increases. GAME_OVER means the attempt failed and the level restarted (a RESET is issued for you); identify the cause before repeating it.
@@ -57,7 +75,8 @@ def initial_prompt(game_id: str, prime_note: str | None = None) -> str:
     """First invocation of a run; prime_note is an optional vision-model read of the opening frame."""
     base = (
         f"You are starting a fresh run of game '{game_id}'. log.txt contains step 0 (the initial board after RESET). "
-        "Inspect it, then reply with your analysis and your first [ACTIONS] block."
+        "Start with python using `import arclog; steps = arclog.load()` to inspect the board through the helper, "
+        "then reply with your analysis and your first [ACTIONS] block."
     )
     if prime_note:
         base += (
@@ -75,7 +94,7 @@ def reinvoke_prompt(reason: str, first_new_step: int, last_step: int) -> str:
     """Continuation within the same conversation after the queue stopped."""
     return (
         f"Steps {first_new_step}..{last_step} have been appended to log.txt since your last plan. Trigger: {reason}. "
-        "Analyze the new entries (use python/search rather than rereading everything), update your hypotheses, "
+        "Read [DIFF] first, then use python with arclog for any board or object analysis rather than hand-parsing log.txt. Update your hypotheses, "
         "and reply with your next [ACTIONS] block."
     )
 
@@ -85,7 +104,8 @@ def fresh_session_prompt(game_id: str, last_step: int, reason: str) -> str:
     return (
         f"You are joining a run of game '{game_id}' already in progress at step {last_step}; this conversation has no history. "
         f"Everything known so far — every board, action, and your predecessor's plans — is in log.txt. Trigger: {reason}. "
-        "Reconstruct the current situation from log.txt (your predecessor's [PLAN] blocks summarize prior hypotheses), "
+        "Start with python using `import arclog; steps = arclog.load()` to reconstruct the current situation "
+        "from log.txt (your predecessor's [PLAN] blocks summarize prior hypotheses), "
         "then reply with your analysis and an [ACTIONS] block."
     )
 

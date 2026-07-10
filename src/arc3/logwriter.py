@@ -12,6 +12,7 @@ agent can grep for it and python can parse it back exactly:
     [LEVELS] 1/7
     [STATE] NOT_FINISHED
     [AVAILABLE] ACTION1 ACTION2 ACTION3 ACTION4
+    [DIFF] 2 cells: (3,7) 0>5; (4,7) 5>0
 
     [PLAN] invocation 3
     <the agent's stated plan>
@@ -24,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ACTION_NAMES = {0: "RESET", 1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5", 6: "ACTION6", 7: "ACTION7"}
+BoardDiff = list[tuple[int, int, int, int]]
 
 
 def action_name(action_id: int) -> str:
@@ -54,7 +56,7 @@ class LogWriter:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.touch()
 
-    def append_step(self, record: StepRecord) -> None:
+    def append_step(self, record: StepRecord, *, diff: BoardDiff | None = None) -> None:
         """Append one step section."""
         lines = [f"[STEP {record.step}]"]
         action_line = f"[ACTION] {record.action}"
@@ -69,6 +71,8 @@ class LogWriter:
         lines.append(f"[LEVELS] {record.levels_completed}/{record.win_levels}")
         lines.append(f"[STATE] {record.state}")
         lines.append(f"[AVAILABLE] {' '.join(action_name(a) for a in record.available_actions)}")
+        if diff is not None:
+            lines.append(format_diff(diff))
         self._append("\n".join(lines) + "\n\n")
 
     def append_plan(self, invocation: int, plan_text: str) -> None:
@@ -98,7 +102,7 @@ _NAME_TO_ID = {name: action_id for action_id, name in ACTION_NAMES.items()}
 
 
 def parse_log(text: str) -> list[StepRecord]:
-    """Parse step sections back out of a log; [PLAN] blocks are skipped."""
+    """Parse step sections back out of a log; derived [DIFF] and [PLAN] blocks are skipped."""
     records: list[StepRecord] = []
     builder: _StepBuilder | None = None
     in_plan = False
@@ -141,6 +145,9 @@ def parse_log(text: str) -> list[StepRecord]:
         elif line.startswith("[AVAILABLE]"):
             names = line[len("[AVAILABLE]") :].split()
             builder.available_actions = [_NAME_TO_ID[name] for name in names]
+            current_frame = None
+        elif line.startswith("[DIFF]"):
+            current_frame = None
         elif current_frame is not None and line:
             current_frame.append([int(cell) for cell in line.split()])
     if builder is not None:
@@ -160,3 +167,28 @@ def _finish(builder: _StepBuilder) -> StepRecord:
         x=builder.x,
         y=builder.y,
     )
+
+
+def diff_boards(before: list[list[int]], after: list[list[int]]) -> BoardDiff:
+    """Return changed cells as (x, y, old, new), with x=column and y=row."""
+    cells: BoardDiff = []
+    for y, (before_row, after_row) in enumerate(zip(before, after, strict=True)):
+        for x, (old, new) in enumerate(zip(before_row, after_row, strict=True)):
+            old_int = int(old)
+            new_int = int(new)
+            if old_int != new_int:
+                cells.append((x, y, old_int, new_int))
+    return cells
+
+
+def format_diff(diff: BoardDiff) -> str:
+    """Render the derived settled-board diff line for log.txt."""
+    if not diff:
+        return "[DIFF] none"
+    count = len(diff)
+    if count <= 40:
+        changes = "; ".join(f"({x},{y}) {old}>{new}" for x, y, old, new in diff)
+        return f"[DIFF] {count} cells: {changes}"
+    xs = [x for x, _, _, _ in diff]
+    ys = [y for _, y, _, _ in diff]
+    return f"[DIFF] {count} cells changed in bbox ({min(xs)},{min(ys)})-({max(xs)},{max(ys)})"
