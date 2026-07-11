@@ -38,6 +38,22 @@ def test_malformed_json_is_an_error() -> None:
         parse_actions(wrap('{"plan": [{"action": "ACTION1"'), available=AVAILABLE)
 
 
+def test_trailing_bracket_after_object_is_tolerated() -> None:
+    # observed failure: a model trailed a stray ']}' after an otherwise-valid object, which aborted
+    # a live run mid-solve; decoding the first balanced object must recover the plan
+    plan = parse_actions(
+        wrap('{"plan": [{"action": "ACTION6", "x": 13, "y": 28, "expect": [[13, 28, 4]]}], "expect_levels": 4, "reasoning": "push"}]}'),
+        available=AVAILABLE,
+    )
+    assert plan.actions == [PlannedAction("ACTION6", x=13, y=28, expect=((13, 28, 4),))]
+    assert plan.expect_levels == 4
+
+
+def test_trailing_prose_after_object_is_tolerated() -> None:
+    plan = parse_actions(wrap('{"plan": [{"action": "ACTION1"}]} -- that should do it'), available=AVAILABLE)
+    assert plan.actions == [PlannedAction("ACTION1")]
+
+
 def test_truncated_output_mentions_the_cutoff() -> None:
     with pytest.raises(PlanParseError, match="cut off at the output-token limit"):
         parse_actions(wrap('{"plan": [{"action": "ACTION1"'), available=AVAILABLE, truncated=True)

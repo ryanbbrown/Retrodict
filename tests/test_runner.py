@@ -210,15 +210,16 @@ async def test_state_change_interrupts_the_queue(tmp_path: Path) -> None:
 
 async def test_parse_retry_limit_stops_the_run(tmp_path: Path) -> None:
     env = FakeEnv([make_frame()], [])
-    agent = FakeAgent([reply("no block here"), reply("still no block")])
+    # initial attempt + _PARSE_RETRY_LIMIT (3) retries, all invalid, before the run gives up
+    agent = FakeAgent([reply("no block here") for _ in range(4)])
     runner = make_runner(tmp_path, env, agent)
 
     metrics = await runner.run()
 
     assert metrics["stop_reason"] == "plan_parse_failed"
-    assert len(agent.calls) == 2
+    assert len(agent.calls) == 4
     assert "could not be used" in agent.calls[1].prompt
-    assert metrics["parse_retries"] == 1
+    assert metrics["parse_retries"] == 3
     assert env.steps == []
 
 

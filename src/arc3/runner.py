@@ -26,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ANALYSIS_PYTHON = REPO_ROOT / "analysis_venv" / "bin" / "python3"
 ENVIRONMENTS_DIR = REPO_ROOT / "environment_files"
 WORKSPACE_TEMPLATE = REPO_ROOT / "workspace_template"
+_PARSE_RETRY_LIMIT = 3  # re-prompt the model this many times on a bad [ACTIONS] block before giving up
 
 
 @dataclass(frozen=True)
@@ -332,15 +333,15 @@ class GameRunner:
     async def _invoke(self, reason: str) -> ParsedPlan | None:
         prompt, resume = self._build_prompt(reason)
         reply = await self._call(prompt, resume)
-        try:
-            return self._accept(reply)
-        except PlanParseError as exc:
-            self.state.parse_retries += 1
-            retry = await self._call(prompts.parse_retry_prompt(str(exc)), reply.resume_state)
+        for attempt in range(_PARSE_RETRY_LIMIT + 1):
             try:
-                return self._accept(retry)
-            except PlanParseError:
-                return None
+                return self._accept(reply)
+            except PlanParseError as exc:
+                if attempt == _PARSE_RETRY_LIMIT:
+                    return None
+                self.state.parse_retries += 1
+                reply = await self._call(prompts.parse_retry_prompt(str(exc)), reply.resume_state)
+        return None  # unreachable: the loop always returns
 
     def _build_prompt(self, reason: str) -> tuple[str, dict[str, Any] | None]:
         reason_text = prompts.REINVOKE_REASONS.get(reason, reason)

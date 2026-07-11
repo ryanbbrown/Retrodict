@@ -9,7 +9,7 @@ When the reply contains more than one [ACTIONS] block, the last one wins (the
 final answer supersedes drafts). A plan longer than the remaining action
 budget is clamped, not rejected — executing the prefix is what would happen
 anyway. PlanParseError messages are written for the model: the runner sends
-them back verbatim on the single parse retry.
+them back verbatim on each parse retry.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from typing import Any
 
 ACTIONS_MARKER = "[ACTIONS]"
 _CODE_FENCE = re.compile(r"^```[a-z]*\n|\n?```\s*$", re.MULTILINE)
@@ -58,12 +59,7 @@ def parse_actions(
     if marker_at < 0:
         raise PlanParseError(_with_truncation_hint("no [ACTIONS] block found; end your reply with an [ACTIONS] block", truncated))
     payload = _CODE_FENCE.sub("", text[marker_at + len(ACTIONS_MARKER) :]).strip()
-    try:
-        data = json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise PlanParseError(_with_truncation_hint(f"the [ACTIONS] block is not valid JSON: {exc}", truncated)) from exc
-    if not isinstance(data, dict):
-        raise PlanParseError('the [ACTIONS] block must be a JSON object like {"plan": [...], "reasoning": "..."}')
+    data = _decode_object(payload, truncated)
     plan = data.get("plan")
     if not isinstance(plan, list) or not plan:
         raise PlanParseError('the [ACTIONS] block needs a non-empty "plan" list')
@@ -83,6 +79,27 @@ def parse_actions(
         clamped=clamped,
         expect_levels=expect_levels,
     )
+
+
+def _decode_object(payload: str, truncated: bool) -> dict[str, Any]:
+    """Decode the first complete JSON object in the payload.
+
+    Models occasionally trail a stray bracket after an otherwise-valid object (e.g. ``{...}]}``) or
+    append prose; decoding just the first balanced object tolerates that, while genuinely truncated
+    JSON still raises.
+    """
+    start = payload.find("{")
+    if start < 0:
+        raise PlanParseError(
+            _with_truncation_hint('the [ACTIONS] block must be a JSON object like {"plan": [...], "reasoning": "..."}', truncated)
+        )
+    try:
+        data, _ = json.JSONDecoder().raw_decode(payload, start)
+    except json.JSONDecodeError as exc:
+        raise PlanParseError(_with_truncation_hint(f"the [ACTIONS] block is not valid JSON: {exc}", truncated)) from exc
+    if not isinstance(data, dict):
+        raise PlanParseError('the [ACTIONS] block must be a JSON object like {"plan": [...], "reasoning": "..."}')
+    return data
 
 
 def _validate_item(item: object, index: int, available: set[str]) -> PlannedAction:
