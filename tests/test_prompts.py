@@ -64,8 +64,34 @@ def test_system_prompt_forbids_acting_without_a_prediction() -> None:
     assert "an action taken without a prediction is a wasted action and a failure of process" in prompt
 
 
+def test_system_prompt_prescribes_curated_playbook_memory() -> None:
+    """The dominant cost sink on hard levels is a fresh session (triggered by the context drop)
+    re-deriving rules the run already settled, because the only durable memory — log.txt — is raw
+    and huge. The system prompt must direct the agent to keep a compact curated playbook.md of
+    confirmed rules and falsified hypotheses, or the memory that survives resets silently reverts to
+    the un-distilled log and the re-derivation waste returns."""
+    prompt = prompts.SYSTEM_PROMPT
+
+    assert "playbook.md" in prompt
+    # the agent must know why: the conversation is dropped and only workspace files survive
+    assert "conversation is periodically dropped" in prompt
+    # it must record falsified hypotheses so a fresh session does not retry them
+    assert "falsified so you never retry them" in prompt
+    # and it must update the playbook when knowledge changes, not just on completion
+    assert "confirm or rule out a mechanic" in prompt
+
+
 def test_invocation_prompts_nudge_agents_to_use_arclog_and_diff() -> None:
     assert "import arclog; steps = arclog.load()" in prompts.initial_prompt("ft09")
     assert "Read [DIFF] first" in prompts.reinvoke_prompt("queue empty", 1, 2)
     assert "arclog" in prompts.reinvoke_prompt("queue empty", 1, 2)
     assert "import arclog; steps = arclog.load()" in prompts.fresh_session_prompt("ft09", 10, "resumed")
+
+
+def test_fresh_session_prompt_directs_reading_playbook_first() -> None:
+    """A fresh session is exactly the moment curated memory pays off: it must read playbook.md before
+    reconstructing from the raw log, and trust it for settled rules rather than re-deriving them."""
+    prompt = prompts.fresh_session_prompt("ft09", 10, "resumed")
+
+    assert "playbook.md" in prompt
+    assert "trust it for settled rules instead of re-deriving them" in prompt

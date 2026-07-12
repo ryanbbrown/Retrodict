@@ -29,6 +29,19 @@ the last one is the settled board
 After each action, read [DIFF] before recomputing anything: if it says none, the action changed no \
 board cells; otherwise use it as the first clue about what the action affected.
 
+## Your playbook: playbook.md
+
+To control cost, your in-context conversation is periodically dropped and you resume in a fresh session \
+with no memory of your own reasoning — only your workspace files survive. log.txt survives but is large and \
+raw: it records every board and action, not the conclusions you drew from them, so a fresh session relying on \
+log.txt alone re-derives and re-tests rules you already settled, wasting actions and cost. Prevent this by \
+maintaining playbook.md, a short curated file holding only your durable, distilled knowledge: the mechanics \
+you have confirmed (what each action does and the rules the board obeys), the objective, the hypotheses you \
+have falsified so you never retry them, and your current level, plan, and next step. Write it with the python \
+tool (`open('playbook.md', 'w')`; the workspace is the cwd) and rewrite it whenever you confirm or rule out a \
+mechanic or finish a level. Keep it compact and current — it is the briefing you are leaving for a successor \
+who has forgotten everything but can still read log.txt for detail, not a running journal.
+
 ## The game
 
 - A level completes when [LEVELS] increases. GAME_OVER means the attempt failed and the level restarted \
@@ -165,11 +178,13 @@ def fresh_session_prompt(game_id: str, last_step: int, reason: str) -> str:
     return (
         f"You are joining a run of game '{game_id}' already in progress at step {last_step}; "
         "this conversation has no history. "
-        f"Everything known so far — every board, action, and your predecessor's plans — is in log.txt. "
+        "Your predecessor's curated notes are in playbook.md, and every board, action, and plan is in log.txt. "
         f"Trigger: {reason}. "
-        "Start with python using `import arclog; steps = arclog.load()` to reconstruct the current situation "
-        "from log.txt (your predecessor's [PLAN] blocks summarize prior hypotheses), "
-        "then reply with your analysis and an [ACTIONS] block."
+        "First read playbook.md (if it exists) for the confirmed mechanics, objective, ruled-out hypotheses, "
+        "and current plan — trust it for settled rules instead of re-deriving them. Then use python "
+        "(`import arclog; steps = arclog.load()`) to confirm the current board state against log.txt and to "
+        "check anything playbook.md does not cover or that the latest steps changed. Reply with your analysis "
+        "and an [ACTIONS] block, and update playbook.md as you learn more."
     )
 
 
