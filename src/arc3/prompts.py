@@ -38,20 +38,21 @@ log.txt alone re-derives and re-tests rules you already settled, wasting actions
 maintaining playbook.md, a curated briefing for the successor who wakes up with your files but none of your \
 memory. Give it two parts:
 
-- Confirmed: your durable, game-wide knowledge — the mechanics you have confirmed (what each action does and \
-the rules the board obeys), the objective, and the hypotheses you have falsified so you never retry them. Every \
-entry is a distilled conclusion, never the story of how you reached it; this part spans the whole game and \
-grows only as you settle new facts.
-- Current level: your live working area for the level in progress — the plan, the next step, what you have \
-already tried this level, and the hypotheses still open. This part may be verbose; it exists so a mid-level \
-reset does not lose your progress.
+- Working model: your current best understanding of the game — the controls, the mechanics, and the objective. \
+Plan from it instead of re-deriving what it already covers, but hold it loosely: the raw log is the ground \
+truth, and later levels can change or add mechanics, so nothing here is permanent. Mark each point by how well \
+the log supports it (checked against the log vs. still assumed), and do not build multi-step plans on \
+merely-assumed points. The moment the log contradicts a point — or a plan built on it turns out impossible — \
+that point is what is wrong: re-derive it from the log rather than inventing a new mechanic to rescue the old \
+belief.
+- Working memory: your current attempt — the level, the avatar's position, your plan and next step, what you \
+have tried, and what this level's evidence has ruled out.
 
 Maintain it with the edit tool for small incremental changes and the write tool to lay down a fresh compacted \
-version. When a level completes, distill whatever in Current level proved durable up into Confirmed, then clear \
-Current level for the next one — carry conclusions forward, not the exploration narrative, so the file stays a \
-briefing and never becomes a running journal. Before spending actions to test a hypothesis, check it against \
-Confirmed: if it contradicts something you already confirmed there, treat it as already falsified rather than \
-re-testing it.
+version. When a level completes, distill what you learned into the working model and reset working memory for \
+the next level — carry understanding forward, not the exploration narrative, so the file stays a briefing and \
+never becomes a running journal. Before spending a live action to test something, check whether the log already \
+answers it: retrodict against log.txt first, and spend an action only on what the log genuinely cannot settle.
 
 ## The game
 
@@ -193,8 +194,9 @@ def fresh_session_prompt(game_id: str, last_step: int, reason: str) -> str:
         "this conversation has no history. "
         "Your predecessor's curated notes are in playbook.md, and every board, action, and plan is in log.txt. "
         f"Trigger: {reason}. "
-        "First read playbook.md (if it exists) for its Confirmed knowledge and Current level working notes "
-        "— trust it for settled rules instead of re-deriving them. Then use python "
+        "First read playbook.md (if it exists) for its working model and working memory "
+        "— plan from it instead of re-deriving what it covers, but treat the raw log as ground truth if they "
+        "disagree. Then use python "
         "(`import arclog; steps = arclog.load()`) to confirm the current board state against log.txt and to "
         "check anything playbook.md does not cover or that the latest steps changed. Reply with your analysis "
         "and an [ACTIONS] block, and keep playbook.md current (edit for small changes, write to recompact) as "

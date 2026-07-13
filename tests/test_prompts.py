@@ -67,30 +67,32 @@ def test_system_prompt_forbids_acting_without_a_prediction() -> None:
 def test_system_prompt_prescribes_curated_playbook_memory() -> None:
     """The dominant cost sink on hard levels is a fresh session (triggered by the context drop)
     re-deriving rules the run already settled, because the only durable memory — log.txt — is raw
-    and huge. The system prompt must direct the agent to keep a curated playbook.md of confirmed
-    rules and falsified hypotheses, or the memory that survives resets silently reverts to the
-    un-distilled log and the re-derivation waste returns."""
+    and huge. The system prompt must direct the agent to keep a curated playbook.md, split into a
+    provisional working model plus disposable working memory, or the memory that survives resets
+    silently reverts to the un-distilled log and the re-derivation waste returns."""
     prompt = prompts.SYSTEM_PROMPT
 
     assert "playbook.md" in prompt
     # the agent must know why: the conversation is dropped and only workspace files survive
     assert "conversation is periodically dropped" in prompt
-    # it must record falsified hypotheses so a fresh session does not retry them
-    assert "falsified so you never retry them" in prompt
-    # the playbook must be split so game-wide facts persist while per-level scratch is disposable —
-    # without this split the file accretes every level's exploration narrative and bloats (the 34KB
-    # ls20 case), re-typing the whole thing as output tokens on every write
-    assert "Confirmed" in prompt
-    assert "Current level" in prompt
-    # the compaction rule is distill-then-clear on level completion, not a fixed line budget
-    assert "distill whatever in Current level proved durable up into Confirmed" in prompt
-    assert "carry conclusions forward, not the exploration narrative" in prompt
+    # the playbook must be split so a game-wide model persists while per-attempt scratch is disposable —
+    # without this split the file accretes every level's exploration narrative and bloats (the 34KB ls20 case)
+    assert "Working model" in prompt
+    assert "Working memory" in prompt
+    # the model is provisional, not a "confirmed" bucket: crystallizing an unverified premise as fact and
+    # then reasoning forward from it drove the ls20 L2 cascade (a false "consumed rotator" belief made a
+    # feasible solve look impossible, so the agent invented phantom mechanics instead of doubting the premise)
+    assert "hold it loosely" in prompt
+    assert "nothing here is permanent" in prompt
+    # so on contradiction/infeasibility the agent must re-derive from the log, not invent a rescue mechanic
+    assert "re-derive it from the log rather than inventing a new mechanic" in prompt
+    # and each point carries its evidence status so an assumption never silently becomes load-bearing
+    assert "checked against the log vs. still assumed" in prompt
     # native write/edit make incremental updates cheap; python full-rewrites were the cost sink
     assert "edit tool" in prompt
     assert "write tool" in prompt
-    # hypothesis hygiene: a new hypothesis contradicting a confirmed fact is already falsified, so
-    # the agent must not spend actions re-testing it (the ls20 L2 self-contradiction thrash)
-    assert "treat it as already falsified rather than re-testing it" in prompt
+    # retrodict-before-live-test: the log is cheap to query and often already answers the question
+    assert "retrodict against log.txt first" in prompt
 
 
 def test_invocation_prompts_nudge_agents_to_use_arclog_and_diff() -> None:
@@ -106,4 +108,4 @@ def test_fresh_session_prompt_directs_reading_playbook_first() -> None:
     prompt = prompts.fresh_session_prompt("ft09", 10, "resumed")
 
     assert "playbook.md" in prompt
-    assert "trust it for settled rules instead of re-deriving them" in prompt
+    assert "plan from it instead of re-deriving what it covers" in prompt
