@@ -132,7 +132,7 @@ class ThinAgentClient:
             root=workspace,
             model=cfg.model,
             system_prompt=prompts.SYSTEM_PROMPT,
-            builtin_tools=["read", "search"],
+            builtin_tools=["read", "search", "write", "edit"],
             max_model_requests=cfg.max_model_requests,
             request_timeout=cfg.request_timeout,
             max_tokens=cfg.max_output_tokens,

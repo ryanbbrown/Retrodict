@@ -35,12 +35,23 @@ To control cost, your in-context conversation is periodically dropped and you re
 with no memory of your own reasoning — only your workspace files survive. log.txt survives but is large and \
 raw: it records every board and action, not the conclusions you drew from them, so a fresh session relying on \
 log.txt alone re-derives and re-tests rules you already settled, wasting actions and cost. Prevent this by \
-maintaining playbook.md, a short curated file holding only your durable, distilled knowledge: the mechanics \
-you have confirmed (what each action does and the rules the board obeys), the objective, the hypotheses you \
-have falsified so you never retry them, and your current level, plan, and next step. Write it with the python \
-tool (`open('playbook.md', 'w')`; the workspace is the cwd) and rewrite it whenever you confirm or rule out a \
-mechanic or finish a level. Keep it compact and current — it is the briefing you are leaving for a successor \
-who has forgotten everything but can still read log.txt for detail, not a running journal.
+maintaining playbook.md, a curated briefing for the successor who wakes up with your files but none of your \
+memory. Give it two parts:
+
+- Confirmed: your durable, game-wide knowledge — the mechanics you have confirmed (what each action does and \
+the rules the board obeys), the objective, and the hypotheses you have falsified so you never retry them. Every \
+entry is a distilled conclusion, never the story of how you reached it; this part spans the whole game and \
+grows only as you settle new facts.
+- Current level: your live working area for the level in progress — the plan, the next step, what you have \
+already tried this level, and the hypotheses still open. This part may be verbose; it exists so a mid-level \
+reset does not lose your progress.
+
+Maintain it with the edit tool for small incremental changes and the write tool to lay down a fresh compacted \
+version. When a level completes, distill whatever in Current level proved durable up into Confirmed, then clear \
+Current level for the next one — carry conclusions forward, not the exploration narrative, so the file stays a \
+briefing and never becomes a running journal. Before spending actions to test a hypothesis, check it against \
+Confirmed: if it contradicts something you already confirmed there, treat it as already falsified rather than \
+re-testing it.
 
 ## The game
 
@@ -57,6 +68,8 @@ pieces.
 ## Tools
 
 - read: read file ranges (useful for recent log entries)
+- write: create or overwrite a file (use it to lay down a fresh, compacted playbook.md)
+- edit: replace a string in a file (cheap incremental updates to playbook.md)
 - search: ripgrep the workspace (grep [STEP or [LEVELS markers to navigate the log)
 - python: run a python3 script (numpy/scipy/networkx) with the workspace as cwd
 - arclog: import arclog in python for log parsing, settled-board diffs, and object segmentation; \
@@ -180,11 +193,12 @@ def fresh_session_prompt(game_id: str, last_step: int, reason: str) -> str:
         "this conversation has no history. "
         "Your predecessor's curated notes are in playbook.md, and every board, action, and plan is in log.txt. "
         f"Trigger: {reason}. "
-        "First read playbook.md (if it exists) for the confirmed mechanics, objective, ruled-out hypotheses, "
-        "and current plan — trust it for settled rules instead of re-deriving them. Then use python "
+        "First read playbook.md (if it exists) for its Confirmed knowledge and Current level working notes "
+        "— trust it for settled rules instead of re-deriving them. Then use python "
         "(`import arclog; steps = arclog.load()`) to confirm the current board state against log.txt and to "
         "check anything playbook.md does not cover or that the latest steps changed. Reply with your analysis "
-        "and an [ACTIONS] block, and update playbook.md as you learn more."
+        "and an [ACTIONS] block, and keep playbook.md current (edit for small changes, write to recompact) as "
+        "you learn more."
     )
 
 

@@ -67,9 +67,9 @@ def test_system_prompt_forbids_acting_without_a_prediction() -> None:
 def test_system_prompt_prescribes_curated_playbook_memory() -> None:
     """The dominant cost sink on hard levels is a fresh session (triggered by the context drop)
     re-deriving rules the run already settled, because the only durable memory — log.txt — is raw
-    and huge. The system prompt must direct the agent to keep a compact curated playbook.md of
-    confirmed rules and falsified hypotheses, or the memory that survives resets silently reverts to
-    the un-distilled log and the re-derivation waste returns."""
+    and huge. The system prompt must direct the agent to keep a curated playbook.md of confirmed
+    rules and falsified hypotheses, or the memory that survives resets silently reverts to the
+    un-distilled log and the re-derivation waste returns."""
     prompt = prompts.SYSTEM_PROMPT
 
     assert "playbook.md" in prompt
@@ -77,8 +77,20 @@ def test_system_prompt_prescribes_curated_playbook_memory() -> None:
     assert "conversation is periodically dropped" in prompt
     # it must record falsified hypotheses so a fresh session does not retry them
     assert "falsified so you never retry them" in prompt
-    # and it must update the playbook when knowledge changes, not just on completion
-    assert "confirm or rule out a mechanic" in prompt
+    # the playbook must be split so game-wide facts persist while per-level scratch is disposable —
+    # without this split the file accretes every level's exploration narrative and bloats (the 34KB
+    # ls20 case), re-typing the whole thing as output tokens on every write
+    assert "Confirmed" in prompt
+    assert "Current level" in prompt
+    # the compaction rule is distill-then-clear on level completion, not a fixed line budget
+    assert "distill whatever in Current level proved durable up into Confirmed" in prompt
+    assert "carry conclusions forward, not the exploration narrative" in prompt
+    # native write/edit make incremental updates cheap; python full-rewrites were the cost sink
+    assert "edit tool" in prompt
+    assert "write tool" in prompt
+    # hypothesis hygiene: a new hypothesis contradicting a confirmed fact is already falsified, so
+    # the agent must not spend actions re-testing it (the ls20 L2 self-contradiction thrash)
+    assert "treat it as already falsified rather than re-testing it" in prompt
 
 
 def test_invocation_prompts_nudge_agents_to_use_arclog_and_diff() -> None:
