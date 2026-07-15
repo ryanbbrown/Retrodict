@@ -21,11 +21,11 @@ One integrity note: the agent's python runs in a venv with no game-engine packag
 
 ## Performance
 
-**84.96% mean RHAE across all 25 public games, 21 fully solved**, taking the best run per game. Scored with the official `EnvironmentScoreCalculator` from the `arc_agi` package.
+**84.96% mean RHAE across all 25 public games, 21 fully solved**. Scored with the official `EnvironmentScoreCalculator` from the `arc_agi` package.
 
 As far as I can tell, this is the frontier on this benchmark. The highest score on the [community leaderboard](https://arcprize.org/leaderboard/community) is 63.7%, from [baseline1](https://github.com/astroseger/arc-3-agents-baseline1), and baseline1's newest published run in their repo, [secure_baseline_v1.5](https://github.com/astroseger/arc-3-agents-baseline1/blob/main/results/README_secure_baseline_v1.5.md), reports 82.01% in its results table.
 
-The bigger gap is tokens: **480.9M tokens across my 25 runs vs 9,082M for secure_baseline_v1.5** — about 19× less — both counted the same way (billed input + output) from each run's own logs. Per-game breakdowns: [mine](docs/per-game-level-costs.md), [baseline1's](docs/baseline1-per-game-level-costs.md). Both models bill at the same API rates ($5.00 input / $0.50 cached / $30.00 output per MTok), so the cost comparison translates roughly — $393.74 vs $6,222 — but not exactly: baseline1 appears to have run through a Codex subscription, so their dollar figure is an estimate at API list prices, taken from the cost files in their own archive.
+The bigger gap is tokens: **480.9M tokens across my 25 runs vs 9,082M for secure_baseline_v1.5**, about 19× less. Both are counted the same way (billed input + output) from each run's own logs. Per-game breakdowns: [mine](docs/per-game-level-costs.md), [baseline1's](docs/baseline1-per-game-level-costs.md). Both models bill at the same API rates ($5.00 input / $0.50 cached / $30.00 output per MTok), so the cost comparison translates roughly — $393.74 vs $6,222. However, baseline1 appears to have run through a Codex subscription, so this is only representative; it's likely they actually paid much less.
 
 The score comparison is also not apples to apples: baseline1 published one run per game, while two of my 25 games use a re-run (no harness or prompt changes between attempts):
 
