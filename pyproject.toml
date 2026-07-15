@@ -1,7 +1,7 @@
 [project]
 name = "arc3"
 version = "0.1.0"
-description = "RGB-style ARC-AGI-3 agent on thinharness"
+description = "Retrodict: an ARC-AGI-3 agent built on ThinHarness"
 requires-python = ">=3.12"
 dependencies = [
     "arc-agi",

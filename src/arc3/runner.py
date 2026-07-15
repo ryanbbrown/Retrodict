@@ -66,7 +66,7 @@ PRICING = {
 
 @dataclass(frozen=True)
 class RunnerConfig:
-    """Per-run knobs; defaults are the pilot protocol from the plan."""
+    """Per-run knobs; defaults are the pilot protocol (gpt-5.5 at high effort, $80 cost cap, 2k action cap)."""
 
     game_id: str
     model: str = "openai:gpt-5.5"

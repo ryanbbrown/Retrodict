@@ -13,6 +13,9 @@ __pycache__/
 .venv/
 
 runs/
+final-runs/
+final-runs.tar.gz
+docs/baseline1_v15/
 
 .agent/learnings.jsonl
 
