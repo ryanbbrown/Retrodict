@@ -509,7 +509,11 @@ async def test_run_game_copies_workspace_template_files(tmp_path: Path, monkeypa
             return None
 
     monkeypatch.setattr(runner_module, "containment_check", lambda workspace: {"contained": True})
-    monkeypatch.setattr(runner_module, "open_environment", lambda game_id, run_dir, mode: FakeEnv([make_frame()], []))
+    class FakeArcade:
+        def get_scorecard(self):
+            return None
+
+    monkeypatch.setattr(runner_module, "open_environment", lambda game_id, run_dir, mode: (FakeEnv([make_frame()], []), FakeArcade()))
     monkeypatch.setattr(runner_module, "ThinAgentClient", DummyClient)
     cfg = RunnerConfig(game_id="fake", model="fake:model", pricing=ModelPricing(1.0, 0.1, 10.0), action_cap=1)
 

@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import shutil
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -583,7 +584,19 @@ def open_environment(game_id: str, run_dir: Path, mode: str):
     env = arcade.make(game_id)
     if env is None:
         raise RuntimeError(f"could not open game {game_id} in {mode} mode")
-    return env
+    return env, arcade
+
+
+def write_scorecard(arcade, run_dir: Path) -> None:
+    """Persist the engine's official scorecard (per-level actions and scores) beside metrics.json."""
+    try:
+        scorecard = arcade.get_scorecard()
+        if scorecard is None:
+            return
+        scorecard.api_key = None
+        (run_dir / "scorecard.json").write_text(scorecard.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    except Exception as exc:
+        print(f"warning: could not persist scorecard: {exc}", file=sys.stderr)
 
 
 async def run_game(cfg: RunnerConfig, runs_root: Path, mode: str = "normal", resume_dir: Path | None = None) -> dict[str, Any]:
@@ -605,12 +618,13 @@ async def run_game(cfg: RunnerConfig, runs_root: Path, mode: str = "normal", res
     if not report["contained"]:
         raise RuntimeError(f"containment check failed, aborting: {report}")
 
-    env = open_environment(cfg.game_id, run_dir, mode)
+    env, arcade = open_environment(cfg.game_id, run_dir, mode)
     agent = ThinAgentClient(cfg, workspace, trace_dir=run_dir / "traces")
     try:
         metrics = await GameRunner(env, agent, cfg, run_dir, resume=resume_dir is not None).run()
     finally:
         await agent.aclose()
+        write_scorecard(arcade, run_dir)
     metrics["run_dir"] = str(run_dir)
     return metrics
 
