@@ -32,3 +32,5 @@ analysis_venv/
 kaggle_corpus/
 .html/
 data/
+.replay-state/
+scorecard-*.json

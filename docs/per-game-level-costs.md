@@ -16,7 +16,7 @@ Runs were bounded by a **cost cap, not an action cap**, so an unfinished game st
 | ft09 | 6/6 | 76 | 3.0M | $3.12 | — | — | — |
 | g50t | 7/7 | 428 | 16.3M | $14.35 | — | — | — |
 | ka59 | 7/7 | 619 | 22.8M | $19.29 | — | — | — |
-| lf52 | 5/10 | 321 | 22.7M | $17.14 | 149 | 9.5M | $7.95 |
+| lf52 | 5/10 | 696 | 44.5M | $32.36 | 333 | 25.0M | $17.69 |
 | lp85 | 8/8 | 113 | 10.8M | $8.73 | — | — | — |
 | ls20 | 7/7 | 591 | 19.7M | $16.55 | — | — | — |
 | m0r0 | 6/6 | 260 | 11.8M | $9.81 | — | — | — |
@@ -33,6 +33,6 @@ Runs were bounded by a **cost cap, not an action cap**, so an unfinished game st
 | tu93 | 9/9 | 227 | 9.7M | $9.50 | — | — | — |
 | vc33 | 7/7 | 201 | 8.4M | $8.03 | — | — | — |
 | wa30 | 5/9 | 860 | 33.7M | $24.93 | 1 | 0.3M | $0.27 |
-| **Total** | | **8363** | **430.6M** | **$357.00** | **547** | **50.3M** | **$36.74** |
+| **Total** | | **8738** | **452.4M** | **$372.22** | **731** | **65.8M** | **$46.49** |
 
-Reconciliation: cleared + uncleared cost sums to $393.74 vs $393.74 summed from the runs' `metrics.json`.
+Reconciliation: cleared + uncleared cost sums to $418.71 vs $418.71 summed from the runs' `metrics.json`.
