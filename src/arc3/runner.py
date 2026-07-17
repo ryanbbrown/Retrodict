@@ -297,7 +297,17 @@ class GameRunner:
             if frame is None:
                 return "env_error"
             replayed = [_board_lists(board) for board in frame.frame]
-            same = replayed == record.frames and frame.levels_completed == record.levels_completed and frame.state.value == record.state
+            # A resume's position is defined by the settled board, level, and
+            # state. Intermediate animation frames can be cosmetically
+            # nondeterministic (e.g. lf52's sparkle transition draws from
+            # np.random), so requiring every frame to match would spuriously
+            # abort a resume whose actual game state is identical. Compare the
+            # settled board only.
+            same = (
+                replayed[-1] == record.frames[-1]
+                and frame.levels_completed == record.levels_completed
+                and frame.state.value == record.state
+            )
             if not same:
                 raise RuntimeError(f"resume replay diverged from the log at step {record.step}; start a new run instead")
             self.frame = frame

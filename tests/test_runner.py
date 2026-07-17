@@ -483,6 +483,30 @@ async def test_resume_aborts_when_the_replay_diverges_from_the_log(tmp_path: Pat
         await runner.run()
 
 
+async def test_resume_tolerates_cosmetic_intermediate_frame_differences(tmp_path: Path) -> None:
+    """A resume must not abort when only throwaway animation frames differ (settled board matches).
+
+    lf52's sparkle transition draws intermediate frames from np.random, so a
+    replay produces different animation frames than the log even though the
+    settled board, level, and state are identical and deterministic.
+    """
+    logged = make_frame(levels=1, boards=2)
+    logged.frame[0][1, 1] = 5  # cosmetic sparkle cell recorded in the log
+    write_resume_artifacts(tmp_path / "run", [("RESET", make_frame()), ("ACTION1", logged)])
+
+    replayed = make_frame(levels=1, boards=2)
+    replayed.frame[0][2, 2] = 5  # a different sparkle cell this run; settled frame[-1] still matches
+    env = FakeEnv([make_frame()], [replayed, make_frame(state=GameState.WIN, levels=7)])
+    agent = FakeAgent([reply(plan_text("ACTION2"))])
+    cfg = RunnerConfig(game_id="fake", model="fake:model", pricing=ModelPricing(1.0, 0.1, 10.0))
+    runner = GameRunner(env, agent, cfg, tmp_path / "run", resume=True)
+
+    metrics = await runner.run()
+
+    assert metrics["stop_reason"] == "win"
+    assert metrics["resumed_at_actions"] == 2
+
+
 async def test_resume_from_a_game_over_tail_issues_the_reset(tmp_path: Path) -> None:
     frame_a, dead = make_frame(), make_frame(state=GameState.GAME_OVER, levels=1)
     write_resume_artifacts(tmp_path / "run", [("RESET", frame_a), ("ACTION1", dead)])
