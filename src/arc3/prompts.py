@@ -230,6 +230,30 @@ def fresh_session_prompt(game_id: str, last_step: int, reason: str) -> str:
     )
 
 
+def escalation_directive(tier: int, actions_this_level: int, self_resets: int) -> str:
+    """Appended by the runner when the current level looks stuck; absent otherwise."""
+    base = (
+        f"[ESCALATION] You have spent {actions_this_level} actions and {self_resets} self-issued resets on the "
+        "current level without completing it. This directive is binding until the level completes — stop live "
+        "probing and switch to model-first play: "
+        "(1) inventory in playbook.md both what the log leaves unexplained AND the reachable places or states "
+        "you have never visited — unexplored territory outranks new mechanic hypotheses; "
+        "(2) promote your checked rules into an executable simulator, a step(state, action) function under "
+        "scratch/ (extend the engine from an earlier level if one exists rather than re-deriving), and verify "
+        "it retrodicts every recorded frame of this level; "
+        "(3) search the simulator (bounded) for a route to the goal, and take live actions only as searched "
+        "plans with computed expects, or as single probes that discriminate between simulator candidates."
+    )
+    if tier >= 2:
+        base += (
+            "\n[ESCALATION 2] Still stuck after simulating: assume a rule is wrong or a region unvisited. "
+            "Enumerate the frontier of states reachable under your model, prefer plans that reach "
+            "never-before-seen board configurations, and re-derive any rule the search claims makes the goal "
+            "unreachable."
+        )
+    return base
+
+
 def parse_retry_prompt(error: str) -> str:
     """Ask the model to re-emit a valid [ACTIONS] block after a parse failure."""
     return (
