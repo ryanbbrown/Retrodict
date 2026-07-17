@@ -392,7 +392,8 @@ class GameRunner:
         state = self.state
         actions_here = state.actions_taken - state.level_start_actions
         if state.escalation_tier == 0 and (state.level_self_resets >= _ESCALATE_RESETS or actions_here >= _ESCALATE_ACTIONS):
-            state.escalation_tier = 1
+            # A level already stuck past two thresholds (e.g. entered via resume) starts at tier 2.
+            state.escalation_tier = 2 if actions_here >= 2 * _ESCALATE_ACTIONS else 1
             state.escalated_at_actions = actions_here
             self._record_escalation(actions_here)
         elif state.escalation_tier == 1 and actions_here - state.escalated_at_actions >= _ESCALATE_ACTIONS:

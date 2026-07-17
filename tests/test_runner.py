@@ -613,3 +613,19 @@ def test_seed_level_signals_recovers_current_level_thrash(tmp_path: Path) -> Non
 
     assert runner.state.level_start_actions == 4
     assert runner.state.level_self_resets == 2
+
+
+async def test_deeply_stuck_level_enters_escalation_at_tier_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A level already past double the action threshold (e.g. via resume) skips straight to tier 2."""
+    import arc3.runner as runner_module
+
+    monkeypatch.setattr(runner_module, "_ESCALATE_ACTIONS", 2)
+    env = FakeEnv(
+        [make_frame()],
+        [make_frame(), make_frame(), make_frame(), make_frame(), make_frame(state=GameState.WIN, levels=7)],
+    )
+    agent = FakeAgent([reply(plan_text("ACTION1", "ACTION2", "ACTION3", "ACTION4")), reply(plan_text("ACTION1"))])
+
+    await make_runner(tmp_path, env, agent).run()
+
+    assert "[ESCALATION 2]" in agent.calls[1].prompt
