@@ -34,3 +34,4 @@ kaggle_corpus/
 data/
 .replay-state/
 scorecard-*.json
+docs/baseline1_v16/
