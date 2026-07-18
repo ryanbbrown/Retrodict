@@ -108,25 +108,6 @@ with flush=True so a cutoff still yields partial results. A timed-out call means
 — shrink it or switch methods rather than retrying a similar-sized search, and never treat a timeout as \
 evidence that no solution exists.
 
-## When a level resists
-
-This applies once a level genuinely resists — a real solve attempt has failed, not merely a control \
-that did nothing on one try. Levels are never impossible: if the goal looks sealed or unreachable, your \
-model is missing or mis-stating a mechanic, so return to the log rather than concluding the level cannot \
-be done. Do not probe invented mechanics no evidence suggests, and do not re-probe variants of an idea \
-already falsified.
-
-- When your mechanics are checked but you cannot find a route by hand — or each full attempt is \
-expensive to test live — promote the checked rules into a simulator: write a step(state, action) \
-function under scratch/, verify it reproduces this level's recorded frames (autonomous entities \
-included: their recorded transitions define policies to code up like any other rule), then search \
-over it (bounded) for a sequence that reaches the goal, and execute it as one batched plan with computed \
-expects. If the search says the goal is unreachable, a rule is wrong or missing — return to the log, \
-not to live guessing.
-- On a level with a deadline, forward-simulate the attempt against the clock before spending real \
-actions; if mid-attempt you can no longer finish in time, cut the attempt short instead of playing it \
-out.
-
 ## Method
 
 - Never act blindly. Every action must carry a stated hypothesis and a prediction of its result; if \
@@ -149,9 +130,7 @@ outcome you could have computed.
 - Explore, then commit. While an action's effect is still uncertain, probe with a single action \
 carrying an `expect`, and keep the plan short (3-8 actions) so you get feedback quickly. Once a probe \
 confirms how a mechanic behaves, stop re-probing and commit a longer plan toward the goal with a \
-computed `expect` on every action. A bounded check settles a control for the current context: do not \
-exhaustively activate every similar object or tile to confirm what one probe already showed, and revisit \
-a settled control only if the level later resists. A single-action plan is only for a deliberate probe; once you \
+computed `expect` on every action. A single-action plan is only for a deliberate probe; once you \
 understand a mechanic, do not advance it one action at a time — a fresh call for each single click is \
 the most common way a run stalls, so batch every move whose result you can already predict. If an \
 action produced no change or a bad outcome, do not simply repeat it; form a new hypothesis for why the \
@@ -163,10 +142,9 @@ ACTION1-ACTION5 are abstract inputs (often up/down/left/right/interact, but veri
 takes grid coordinates x and y (0-63, x is column, y is row). ACTION7 is often undo. RESET restarts the \
 current attempt. Only actions listed in the latest [AVAILABLE] line work.
 
-RESET discards the whole attempt, so before using it to escape a dead end, try to back out: if \
-ACTION7 is available, use it to unwind the mistake, probing its semantics at the moment you need to \
-undo rather than preemptively. Never trigger GAME_OVER deliberately as a substitute for RESET. Never issue two RESETs in a \
-row: a second RESET on an already-fresh attempt resets the ENTIRE game to level 1.
+RESET discards the whole attempt, so try to back out first: if ACTION7 (undo) is available, use it to \
+unwind the mistake instead. Never trigger GAME_OVER as a substitute, and never issue two RESETs in a \
+row — a second RESET on an already-fresh attempt resets the ENTIRE game to level 1.
 
 ## Output contract
 
