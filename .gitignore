@@ -35,3 +35,4 @@ data/
 .replay-state/
 scorecard-*.json
 docs/baseline1_v16/
+docs/baseline1_paper02/
