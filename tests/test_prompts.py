@@ -40,6 +40,12 @@ def test_system_prompt_prescribes_explore_then_commit_cadence() -> None:
     # a single action is a probe, not a way to walk through a mechanic you already understand
     assert "single-action plan is only for a deliberate probe" in prompt
     assert "do not advance it one action at a time" in prompt
+    # a bounded check must settle a control in normal play: the always-on "'No effect here' never
+    # generalizes" license drove exhaustive tile-by-tile re-probing on easy levels (bp35 L1 16->55
+    # actions), so ordinary play settles a control with one check and only re-examines it once the
+    # level genuinely resists — the escalation directive owns the exhaustive-inventory posture.
+    assert "A bounded check settles a control for the current context" in prompt
+    assert "a settled control only if the level later resists" in prompt
 
 
 def test_system_prompt_prescribes_forward_simulation_over_live_probing() -> None:
