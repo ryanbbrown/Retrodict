@@ -15,11 +15,9 @@ Typical flow:
        uv run python scripts/replay_runs.py --mode online --games vc33 sb26
   2. Open the real competition card (prints the card_id, leaves it open):
        uv run python scripts/replay_runs.py --mode competition --open-only
-  3. Live-run lf52 under that card (replay can't reproduce its unseeded RNG):
-       uv run arc3-run lf52 --mode competition --card-id <card_id> ...
-  4. Replay the other 24 games onto the same card:
-       uv run python scripts/replay_runs.py --mode competition --card-id <card_id> --skip lf52 --keep-open
-  5. Close the card and save the final scorecard (its URL goes in the submission):
+  3. Replay all 25 games onto that card:
+       uv run python scripts/replay_runs.py --mode competition --card-id <card_id> --keep-open
+  4. Close the card and save the final scorecard (its URL goes in the submission):
        uv run python scripts/replay_runs.py --mode competition --close-card <card_id>
 
 Requires ARC_API_KEY in the environment (register at https://three.arcprize.org).
@@ -37,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from gen_level_costs import RUN_IDS  # noqa: E402
+from gen_game_costs import RUN_IDS  # noqa: E402
 
 from arc3.logwriter import StepRecord, parse_log  # noqa: E402
 

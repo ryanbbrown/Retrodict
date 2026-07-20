@@ -1092,7 +1092,7 @@ wheels = [
 
 [[package]]
 name = "thinharness"
-version = "0.5.3"
+version = "0.5.4"
 source = { editable = "../thinharness" }
 dependencies = [
     { name = "httpx" },
@@ -1101,8 +1101,9 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastmcp-slim", extras = ["client"], marker = "extra == 'mcp'", specifier = "==3.4.4" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.23.0" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.24.0,<2.0" },
     { name = "opentelemetry-api", marker = "extra == 'tracing'", specifier = ">=1.24" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'tracing'", specifier = ">=1.24" },
     { name = "opentelemetry-sdk", marker = "extra == 'tracing'", specifier = ">=1.24" },
@@ -1117,6 +1118,7 @@ provides-extras = ["dev", "tracing", "mcp"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "fastmcp-slim", extras = ["server"], specifier = "==3.4.4" },
     { name = "pyright", specifier = ">=1.1.409" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
