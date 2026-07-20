@@ -15,6 +15,7 @@ __pycache__/
 runs/
 final-runs/
 final-runs.tar.gz
+release-runs.tar.gz
 docs/baseline1_v15/
 
 .agent/learnings.jsonl
@@ -35,3 +36,4 @@ data/
 .replay-state/
 scorecard-*.json
 docs/baseline1_v16/
+docs/baseline1_paper02/

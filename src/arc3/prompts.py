@@ -51,7 +51,8 @@ have tried, and what this level's evidence has ruled out.
 Maintain it with the edit tool for small incremental changes and the write tool to lay down a fresh compacted \
 version. When a level completes, distill what you learned into the working model and reset working memory for \
 the next level — carry understanding forward, not the exploration narrative, so the file stays a briefing and \
-never becomes a running journal. Before spending a live action to test something, check whether the log already \
+never becomes a running journal. Compact working memory the same way within a level: fold falsified \
+probes into one short "ruled out: ..." line each — the file is re-read on every call. Before spending a live action to test something, check whether the log already \
 answers it: retrodict against log.txt first, and spend an action only on what the log genuinely cannot settle.
 
 ## The game
@@ -141,6 +142,10 @@ ACTION1-ACTION5 are abstract inputs (often up/down/left/right/interact, but veri
 takes grid coordinates x and y (0-63, x is column, y is row). ACTION7 is often undo. RESET restarts the \
 current attempt. Only actions listed in the latest [AVAILABLE] line work.
 
+RESET discards the whole attempt, so try to back out first: if ACTION7 (undo) is available, use it to \
+unwind the mistake instead. Never trigger GAME_OVER as a substitute, and never issue two RESETs in a \
+row — a second RESET on an already-fresh attempt resets the ENTIRE game to level 1.
+
 ## Output contract
 
 End EVERY reply with exactly one block in this form (plain text, last thing in the message):
@@ -202,6 +207,30 @@ def fresh_session_prompt(game_id: str, last_step: int, reason: str) -> str:
         "and an [ACTIONS] block, and keep playbook.md current (edit for small changes, write to recompact) as "
         "you learn more."
     )
+
+
+def escalation_directive(tier: int, actions_this_level: int, self_resets: int) -> str:
+    """Appended by the runner when the current level looks stuck; absent otherwise."""
+    base = (
+        f"[ESCALATION] You have spent {actions_this_level} actions and {self_resets} self-issued resets on the "
+        "current level without completing it. This directive is binding until the level completes — stop live "
+        "probing and switch to model-first play: "
+        "(1) inventory in playbook.md both what the log leaves unexplained AND the reachable places or states "
+        "you have never visited — unexplored territory outranks new mechanic hypotheses; "
+        "(2) promote your checked rules into an executable simulator, a step(state, action) function under "
+        "scratch/ (extend the engine from an earlier level if one exists rather than re-deriving), and verify "
+        "it retrodicts every recorded frame of this level; "
+        "(3) search the simulator (bounded) for a route to the goal, and take live actions only as searched "
+        "plans with computed expects, or as single probes that discriminate between simulator candidates."
+    )
+    if tier >= 2:
+        base += (
+            "\n[ESCALATION 2] Still stuck after simulating: assume a rule is wrong or a region unvisited. "
+            "Enumerate the frontier of states reachable under your model, prefer plans that reach "
+            "never-before-seen board configurations, and re-derive any rule the search claims makes the goal "
+            "unreachable."
+        )
+    return base
 
 
 def parse_retry_prompt(error: str) -> str:

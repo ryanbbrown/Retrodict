@@ -28,6 +28,8 @@ ANALYSIS_PYTHON = REPO_ROOT / "analysis_venv" / "bin" / "python3"
 ENVIRONMENTS_DIR = REPO_ROOT / "environment_files"
 WORKSPACE_TEMPLATE = REPO_ROOT / "workspace_template"
 _PARSE_RETRY_LIMIT = 3  # re-prompt the model this many times on a bad [ACTIONS] block before giving up
+_ESCALATE_RESETS = 2  # self-issued RESETs on one level before the stuck directive fires
+_ESCALATE_ACTIONS = 300  # actions on one level before the stuck directive fires (and again before tier 2)
 
 
 @dataclass(frozen=True)
@@ -197,6 +199,10 @@ class RunState:
     resume_state: dict[str, Any] | None = None
     context_tokens: int = 0
     last_planned_step: int = 0
+    level_start_actions: int = 0
+    level_self_resets: int = 0
+    escalation_tier: int = 0
+    escalated_at_actions: int = 0
     invocation_log: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -244,6 +250,7 @@ class GameRunner:
             return "env_error"
         self.state.actions_taken += 1
         self._log_frame("RESET")
+        self._start_level()
         return None
 
     def _image_prime(self) -> None:
@@ -290,19 +297,51 @@ class GameRunner:
             if frame is None:
                 return "env_error"
             replayed = [_board_lists(board) for board in frame.frame]
-            same = replayed == record.frames and frame.levels_completed == record.levels_completed and frame.state.value == record.state
+            # A resume's position is defined by the settled board, level, and
+            # state. Intermediate animation frames can be cosmetically
+            # nondeterministic (e.g. lf52's sparkle transition draws from
+            # np.random), so requiring every frame to match would spuriously
+            # abort a resume whose actual game state is identical. Compare the
+            # settled board only.
+            same = (
+                replayed[-1] == record.frames[-1]
+                and frame.levels_completed == record.levels_completed
+                and frame.state.value == record.state
+            )
             if not same:
                 raise RuntimeError(f"resume replay diverged from the log at step {record.step}; start a new run instead")
             self.frame = frame
         self.state.step_no = records[-1].step
         self.state.actions_taken = len(records)
         self.resumed_at_actions = len(records)
+        self._seed_level_signals(records)
         if self.frame.state.value == "WIN":
             return "win"
         if self.frame.state.value == "GAME_OVER":
             outcome = self._reset_after_game_over()
             return outcome if outcome in {"action_cap", "env_error"} else None
         return None
+
+    def _seed_level_signals(self, records: list[StepRecord]) -> None:
+        """Recover the current level's stuck signals from the replayed log.
+
+        A RESET record whose predecessor was not GAME_OVER is a self-issued
+        reset; RESETs the runner issued after GAME_OVER (and the run's opening
+        RESET) do not count.
+        """
+        state = self.state
+        state.level_start_actions = 1  # the opening RESET is not part of the level's effort
+        state.level_self_resets = 0
+        prev_levels = 0
+        prev_state: str | None = None
+        for i, record in enumerate(records):
+            if record.levels_completed != prev_levels:
+                state.level_start_actions = i + 1
+                state.level_self_resets = 0
+                prev_levels = record.levels_completed
+            elif i > 0 and record.action == "RESET" and prev_state != "GAME_OVER":
+                state.level_self_resets += 1
+            prev_state = record.state
 
     def _seed_prior_usage(self) -> None:
         metrics_path = self.run_dir / "metrics.json"
@@ -351,10 +390,39 @@ class GameRunner:
             self.state.surprise_note = None
         if self.state.invocations == 0:
             return prompts.initial_prompt(self.cfg.game_id, self.prime_note), None
+        directive = self._escalation_directive()
         if self.state.resume_state is None or self.state.context_tokens > self.cfg.fresh_session_input_tokens:
             self.state.fresh_sessions += 1
-            return prompts.fresh_session_prompt(self.cfg.game_id, self.state.step_no, reason_text), None
-        return prompts.reinvoke_prompt(reason_text, self.state.last_planned_step + 1, self.state.step_no), self.state.resume_state
+            return prompts.fresh_session_prompt(self.cfg.game_id, self.state.step_no, reason_text) + directive, None
+        prompt = prompts.reinvoke_prompt(reason_text, self.state.last_planned_step + 1, self.state.step_no)
+        return prompt + directive, self.state.resume_state
+
+    def _escalation_directive(self) -> str:
+        """Escalate a stuck level (par-free signals only) and render the binding directive, or ''."""
+        state = self.state
+        actions_here = state.actions_taken - state.level_start_actions
+        if state.escalation_tier == 0 and (state.level_self_resets >= _ESCALATE_RESETS or actions_here >= _ESCALATE_ACTIONS):
+            # A level already stuck past two thresholds (e.g. entered via resume) starts at tier 2.
+            state.escalation_tier = 2 if actions_here >= 2 * _ESCALATE_ACTIONS else 1
+            state.escalated_at_actions = actions_here
+            self._record_escalation(actions_here)
+        elif state.escalation_tier == 1 and actions_here - state.escalated_at_actions >= _ESCALATE_ACTIONS:
+            state.escalation_tier = 2
+            self._record_escalation(actions_here)
+        if state.escalation_tier == 0:
+            return ""
+        return "\n\n" + prompts.escalation_directive(state.escalation_tier, actions_here, state.level_self_resets)
+
+    def _record_escalation(self, actions_here: int) -> None:
+        record = {
+            "escalation_tier": self.state.escalation_tier,
+            "levels_completed": self.frame.levels_completed,
+            "actions_this_level": actions_here,
+            "level_self_resets": self.state.level_self_resets,
+        }
+        self.state.invocation_log.append(record)
+        with self.transcript_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     async def _call(self, prompt: str, resume: dict[str, Any] | None) -> AgentReply:
         from thinharness import HarnessError
@@ -441,12 +509,15 @@ class GameRunner:
         self.state.actions_taken += 1
         self.state.step_no += 1
         self._log_frame(action.name, x=action.x, y=action.y, prior_settled=None if action.name == "RESET" else prev_settled)
+        if action.name == "RESET":
+            self.state.level_self_resets += 1
         state = frame.state.value
         if state == "WIN":
             return "win"
         if state == "GAME_OVER":
             return self._reset_after_game_over()
         if frame.levels_completed != prev_levels:
+            self._start_level()
             return "level_change"
         if frame.state != prev_state:
             return "state_change"
@@ -466,6 +537,14 @@ class GameRunner:
         self.state.surprises += 1
         self.state.surprise_note = f"after {action.name}: " + "; ".join(mismatches[:5])
         return "prediction_mismatch"
+
+    def _start_level(self) -> None:
+        """A new level began: reset the per-level stuck signals and stand down any escalation."""
+        state = self.state
+        state.level_start_actions = state.actions_taken
+        state.level_self_resets = 0
+        state.escalation_tier = 0
+        state.escalated_at_actions = 0
 
     def _reset_after_game_over(self) -> str:
         if self.state.actions_taken >= self.cfg.action_cap:
@@ -541,6 +620,7 @@ class GameRunner:
             "input_tokens": state.input_tokens,
             "cached_tokens": state.cached_tokens,
             "output_tokens": state.output_tokens,
+            "escalation_tier": state.escalation_tier,
             "cost_usd": round(self._cost(), 4),
             "wall_seconds": round(wall_seconds, 1),
             "resumed_at_actions": self.resumed_at_actions,

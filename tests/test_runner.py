@@ -483,6 +483,30 @@ async def test_resume_aborts_when_the_replay_diverges_from_the_log(tmp_path: Pat
         await runner.run()
 
 
+async def test_resume_tolerates_cosmetic_intermediate_frame_differences(tmp_path: Path) -> None:
+    """A resume must not abort when only throwaway animation frames differ (settled board matches).
+
+    lf52's sparkle transition draws intermediate frames from np.random, so a
+    replay produces different animation frames than the log even though the
+    settled board, level, and state are identical and deterministic.
+    """
+    logged = make_frame(levels=1, boards=2)
+    logged.frame[0][1, 1] = 5  # cosmetic sparkle cell recorded in the log
+    write_resume_artifacts(tmp_path / "run", [("RESET", make_frame()), ("ACTION1", logged)])
+
+    replayed = make_frame(levels=1, boards=2)
+    replayed.frame[0][2, 2] = 5  # a different sparkle cell this run; settled frame[-1] still matches
+    env = FakeEnv([make_frame()], [replayed, make_frame(state=GameState.WIN, levels=7)])
+    agent = FakeAgent([reply(plan_text("ACTION2"))])
+    cfg = RunnerConfig(game_id="fake", model="fake:model", pricing=ModelPricing(1.0, 0.1, 10.0))
+    runner = GameRunner(env, agent, cfg, tmp_path / "run", resume=True)
+
+    metrics = await runner.run()
+
+    assert metrics["stop_reason"] == "win"
+    assert metrics["resumed_at_actions"] == 2
+
+
 async def test_resume_from_a_game_over_tail_issues_the_reset(tmp_path: Path) -> None:
     frame_a, dead = make_frame(), make_frame(state=GameState.GAME_OVER, levels=1)
     write_resume_artifacts(tmp_path / "run", [("RESET", frame_a), ("ACTION1", dead)])
@@ -528,3 +552,104 @@ def test_available_actions_validation_uses_the_current_frame() -> None:
     """The parser rejects actions the env is not offering right now."""
     with pytest.raises(PlanParseError, match="ACTION7"):
         parse_actions(plan_text("ACTION7"), available={"ACTION1", "RESET"})
+
+
+async def test_two_self_resets_escalate_the_next_prompt(tmp_path: Path) -> None:
+    """Voluntary reset-thrash on one level must trigger the binding stuck directive."""
+    env = FakeEnv([make_frame()], [make_frame(), make_frame(), make_frame(state=GameState.WIN, levels=7)])
+    agent = FakeAgent([reply(plan_text("RESET")), reply(plan_text("RESET")), reply(plan_text("ACTION1"))])
+
+    await make_runner(tmp_path, env, agent).run()
+
+    assert "[ESCALATION]" not in agent.calls[1].prompt
+    assert "[ESCALATION]" in agent.calls[2].prompt
+
+
+async def test_game_over_resets_do_not_count_toward_escalation(tmp_path: Path) -> None:
+    """Engine-forced restarts are failure feedback, not thrash; only self-issued RESETs count."""
+    env = FakeEnv(
+        [make_frame()],
+        [make_frame(state=GameState.GAME_OVER), make_frame(state=GameState.GAME_OVER), make_frame(state=GameState.WIN, levels=7)],
+    )
+    agent = FakeAgent([reply(plan_text("ACTION1")), reply(plan_text("ACTION1")), reply(plan_text("ACTION1"))])
+
+    await make_runner(tmp_path, env, agent).run()
+
+    assert all("[ESCALATION]" not in call.prompt for call in agent.calls)
+
+
+async def test_level_completion_stands_down_escalation(tmp_path: Path) -> None:
+    env = FakeEnv(
+        [make_frame()],
+        [make_frame(), make_frame(), make_frame(levels=1), make_frame(state=GameState.WIN, levels=7)],
+    )
+    agent = FakeAgent(
+        [reply(plan_text("RESET")), reply(plan_text("RESET")), reply(plan_text("ACTION1")), reply(plan_text("ACTION1"))]
+    )
+
+    await make_runner(tmp_path, env, agent).run()
+
+    assert "[ESCALATION]" in agent.calls[2].prompt
+    assert "[ESCALATION]" not in agent.calls[3].prompt
+
+
+async def test_action_threshold_escalates_then_tier_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disciplined-but-endless play on one level escalates by action count, then hardens to tier 2."""
+    import arc3.runner as runner_module
+
+    monkeypatch.setattr(runner_module, "_ESCALATE_ACTIONS", 2)
+    env = FakeEnv(
+        [make_frame()],
+        [make_frame(), make_frame(), make_frame(), make_frame(), make_frame(state=GameState.WIN, levels=7)],
+    )
+    agent = FakeAgent(
+        [reply(plan_text("ACTION1", "ACTION2")), reply(plan_text("ACTION1", "ACTION2")), reply(plan_text("ACTION1"))]
+    )
+
+    metrics = await make_runner(tmp_path, env, agent).run()
+
+    assert "[ESCALATION]" in agent.calls[1].prompt and "[ESCALATION 2]" not in agent.calls[1].prompt
+    assert "[ESCALATION 2]" in agent.calls[2].prompt
+    assert metrics["escalation_tier"] == 2
+
+
+def test_seed_level_signals_recovers_current_level_thrash(tmp_path: Path) -> None:
+    """Resume must rebuild the stuck signals for the level in progress from the log alone."""
+    from arc3.logwriter import StepRecord
+
+    def rec(step: int, action: str, levels: int, state: str = "NOT_FINISHED") -> StepRecord:
+        return StepRecord(step=step, action=action, frames=[], levels_completed=levels, win_levels=7, state=state, available_actions=[])
+
+    records = [
+        rec(0, "RESET", 0),  # opening reset: not a self-reset
+        rec(1, "ACTION1", 0),
+        rec(2, "RESET", 0),  # self-reset on level 1, wiped by the level change below
+        rec(3, "ACTION1", 1),  # level 1 completes at 4 actions taken
+        rec(4, "ACTION1", 1),
+        rec(5, "RESET", 1),  # self-reset on level 2
+        rec(6, "ACTION1", 1, state="GAME_OVER"),
+        rec(7, "RESET", 1),  # runner-issued after GAME_OVER: not a self-reset
+        rec(8, "RESET", 1),  # self-reset on level 2
+    ]
+    runner = make_runner(tmp_path, FakeEnv([make_frame()], []), FakeAgent([]))
+
+    runner._seed_level_signals(records)
+
+    assert runner.state.level_start_actions == 4
+    assert runner.state.level_self_resets == 2
+
+
+async def test_deeply_stuck_level_enters_escalation_at_tier_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A level already past double the action threshold (e.g. via resume) skips straight to tier 2."""
+    import arc3.runner as runner_module
+
+    monkeypatch.setattr(runner_module, "_ESCALATE_ACTIONS", 2)
+    env = FakeEnv(
+        [make_frame()],
+        [make_frame(), make_frame(), make_frame(), make_frame(), make_frame(state=GameState.WIN, levels=7)],
+    )
+    agent = FakeAgent([reply(plan_text("ACTION1", "ACTION2", "ACTION3", "ACTION4")), reply(plan_text("ACTION1"))])
+
+    await make_runner(tmp_path, env, agent).run()
+
+    assert "[ESCALATION 2]" in agent.calls[1].prompt
