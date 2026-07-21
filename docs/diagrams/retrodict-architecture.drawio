@@ -1,0 +1,140 @@
+<mxfile host="Electron">
+  <diagram id="retrodict-arch-styled" name="Architecture">
+    <mxGraphModel dx="1885" dy="1083" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1660" pageHeight="920" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;fontSize=26;fontStyle=1;align=left;fontFamily=Helvetica Neue;fontColor=#0F172A;" value="Retrodict" vertex="1">
+          <mxGeometry height="34" width="300" x="30" y="18" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;fontSize=13;align=left;fontFamily=Helvetica Neue;fontColor=#64748B;" value="how one game is played — harness architecture" vertex="1">
+          <mxGeometry height="22" width="400" x="32" y="52" as="geometry" />
+        </mxCell>
+        <mxCell id="vision" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#F0F9FF;strokeColor=#7DD3FC;fontColor=#075985;fontSize=11;fontFamily=Helvetica Neue;verticalAlign=middle;spacing=6;" value="&lt;b&gt;Vision model&lt;/b&gt; · image prime, once&lt;br&gt;shown a render of the opening board; its read is injected into the first prompt as a hypothesis to verify" vertex="1">
+          <mxGeometry height="70" width="310" x="500" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="env" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#6EE7B7;fontColor=#065F46;fontSize=11;fontFamily=Helvetica Neue;spacing=8;" value="&lt;b&gt;ARC-AGI-3 game&lt;/b&gt;&lt;br&gt;&lt;br&gt;runs locally in-process; consumes actions, returns frames: boards, state, levels completed" vertex="1">
+          <mxGeometry height="120" width="230" x="10" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="runner" parent="1" style="rounded=1;arcSize=4;whiteSpace=wrap;html=1;fillColor=#F8F9FF;strokeColor=#A5B4FC;fontColor=#3730A3;fontSize=13;fontStyle=1;fontFamily=Helvetica Neue;verticalAlign=top;align=left;spacingLeft=14;spacingTop=6;container=1;collapsible=0;" value="Runner — the harness" vertex="1">
+          <mxGeometry height="385" width="780" x="340" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="rq" parent="runner" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#818CF8;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;spacing=6;" value="&lt;b&gt;Plan queue&lt;/b&gt;&lt;br&gt;the door to the game&lt;br&gt;&lt;br&gt;holds the agent&#39;s committed plan and drains it one action per env step — zero LLM calls" vertex="1">
+          <mxGeometry height="150" width="160" x="10" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="rstep" parent="runner" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 4;fillColor=none;strokeColor=#818CF8;fontColor=#6366F1;fontSize=10;fontStyle=2;fontFamily=Helvetica Neue;verticalAlign=top;spacingTop=4;" value="every env step" vertex="1">
+          <mxGeometry height="190" width="230" x="260" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="rcheck" parent="rstep" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C7D2FE;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;spacing=6;" value="&lt;b&gt;Expectation checks&lt;/b&gt;&lt;br&gt;the settled board must show the action&#39;s predicted cells" vertex="1">
+          <mxGeometry height="75" width="210" x="10" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="rlog" parent="rstep" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C7D2FE;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;spacing=6;" value="&lt;b&gt;Log writer&lt;/b&gt;&lt;br&gt;appends every frame to log.txt with a derived [DIFF] line — &quot;[DIFF] none&quot; when nothing changed" vertex="1">
+          <mxGeometry height="65" width="210" x="10" y="115" as="geometry" />
+        </mxCell>
+        <mxCell id="ri" parent="runner" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#818CF8;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;spacing=6;" value="&lt;b&gt;Re-invocation&lt;/b&gt;&lt;br&gt;the door to the model&lt;br&gt;&lt;br&gt;prompts the agent with why control returned (queue empty, prediction miss + diff, level or state change, GAME_OVER, action unavailable) and parses the reply&#39;s plan" vertex="1">
+          <mxGeometry height="150" width="180" x="580" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="rpol" parent="runner" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 4;fillColor=none;strokeColor=#818CF8;fontColor=#6366F1;fontSize=10;fontStyle=2;fontFamily=Helvetica Neue;verticalAlign=top;spacingTop=4;" value="run-level policies — shape the next prompt" vertex="1">
+          <mxGeometry height="100" width="760" x="10" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" parent="rpol" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C7D2FE;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;spacing=6;" value="&lt;b&gt;Context resets&lt;/b&gt;: past 150k input tokens the conversation is dropped; a fresh session resumes from playbook + log" vertex="1">
+          <mxGeometry height="62" width="360" x="10" y="28" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" parent="rpol" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C7D2FE;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;spacing=6;" value="&lt;b&gt;Stuck-level escalation&lt;/b&gt;: 300 actions or 2 self-RESETs on a level → binding build-a-simulator directive; tier 2 after 300 more" vertex="1">
+          <mxGeometry height="62" width="370" x="380" y="28" as="geometry" />
+        </mxCell>
+        <mxCell id="ie1" edge="1" parent="runner" source="rq" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.342;entryDx=0;entryDy=0;strokeColor=#818CF8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="rstep" value="settled frame">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ieback" edge="1" parent="runner" source="rstep" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.88;entryDx=0;entryDy=0;strokeColor=#818CF8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="rq" value="predictions&amp;nbsp;&lt;div&gt;hold:&lt;br&gt;next action&lt;/div&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie2" edge="1" parent="runner" source="rcheck" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.317;entryDx=0;entryDy=0;strokeColor=#818CF8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="ri" value="first miss:&lt;br&gt;halt + diff">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie3" edge="1" parent="runner" source="ri" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#818CF8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="rq" value="parsed plan refills the queue">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="670" y="45" />
+              <mxPoint x="90" y="45" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ie4" edge="1" parent="runner" source="rpol" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;dashPattern=4 4;exitX=0.868;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#818CF8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="ri">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="agent" parent="1" style="rounded=1;arcSize=4;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#C4B5FD;fontColor=#5B21B6;fontSize=13;fontStyle=1;fontFamily=Helvetica Neue;verticalAlign=top;align=left;spacingLeft=14;spacingTop=6;container=1;collapsible=0;" value="LLM agent — gpt-5.6-sol, max effort" vertex="1">
+          <mxGeometry height="240" width="330" x="1220" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" parent="agent" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=top;fontSize=11;fontFamily=Helvetica Neue;fontColor=#1E293B;spacing=4;" value="Proposes hypotheses about the game&#39;s rules and tests them against recorded history first (retrodiction). Predicts the outcome of every action it commits. Curates playbook.md for its successors." vertex="1">
+          <mxGeometry height="95" width="310" x="10" y="38" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" parent="agent" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#DDD6FE;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;spacing=6;" value="&lt;b&gt;Tools&lt;/b&gt;: read · search · write · edit · python" vertex="1">
+          <mxGeometry height="45" width="310" x="10" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" parent="agent" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=top;fontSize=10;fontStyle=2;fontFamily=Helvetica Neue;fontColor=#64748B;spacing=4;" value="never shown images after priming; the log is all it perceives" vertex="1">
+          <mxGeometry height="40" width="310" x="10" y="192" as="geometry" />
+        </mxCell>
+        <mxCell id="venv" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFF1F2;strokeColor=#FDA4AF;fontColor=#9F1239;fontSize=11;fontFamily=Helvetica Neue;spacing=8;" value="&lt;b&gt;Containment venv&lt;/b&gt;&lt;br&gt;&lt;br&gt;the python tool executes here: numpy / scipy / networkx available, game-engine imports blocked (proven per run)" vertex="1">
+          <mxGeometry height="120" width="260" x="1290" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="workspace" parent="1" style="rounded=1;arcSize=4;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#FCD34D;fontColor=#92400E;fontSize=13;fontStyle=1;fontFamily=Helvetica Neue;verticalAlign=top;align=left;spacingLeft=14;spacingTop=6;container=1;collapsible=0;" value="Run workspace — files that outlive the context window" vertex="1">
+          <mxGeometry height="230" width="800" x="340" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" parent="workspace" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#FDE68A;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;log.txt&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#92400E&quot;&gt;ground truth&lt;/font&gt;&lt;br&gt;&lt;br&gt;append-only game log: every action, full 64×64 boards, a [DIFF] per step, and each invocation&#39;s stated plan" vertex="1">
+          <mxGeometry height="170" width="180" x="15" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="f4" parent="workspace" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#FDE68A;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;arclog.py&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#92400E&quot;&gt;bundled helper library&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;i&gt;import arclog&lt;/i&gt; in the python tool: parsed boards as numpy arrays, per-step diffs, connected-component objects" vertex="1">
+          <mxGeometry height="170" width="180" x="207" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" parent="workspace" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#FDE68A;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;playbook.md&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#92400E&quot;&gt;curated memory&lt;/font&gt;&lt;br&gt;&lt;br&gt;working model (rules marked checked vs assumed) + working memory (current attempt); the briefing every fresh session starts from" vertex="1">
+          <mxGeometry height="170" width="180" x="399" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" parent="workspace" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#FDE68A;fontColor=#1E293B;fontSize=11;fontFamily=Helvetica Neue;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;scratch/&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#92400E&quot;&gt;agent-written code&lt;/font&gt;&lt;br&gt;&lt;br&gt;analysis helpers and step(state, action) simulators promoted from checked rules" vertex="1">
+          <mxGeometry height="170" width="180" x="591" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="rq" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.33;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="env" value="one action&lt;br&gt;per step">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="env" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.63;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="rq" value="frame: board ·&lt;br&gt;state · levels">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="ri" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="agent" value="prompt: reason&lt;br&gt;· diff · directive">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="agent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.63;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="ri" value="[ACTIONS] plan +&lt;br&gt;predicted cells">
+          <mxGeometry relative="1" x="-0.1033" y="3" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="f1" value="appends every step + [DIFF]">
+          <mxGeometry relative="1" x="-0.3422" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="461" y="565" />
+              <mxPoint x="461" y="649" />
+              <mxPoint x="445" y="649" />
+            </Array>
+            <mxPoint x="461" y="568" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="agent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.35;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.1;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="workspace" value="read · grep · edit ·&amp;nbsp;&lt;div&gt;analyze these files&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.1972" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1335" y="643" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="agent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.7;exitY=1;exitDx=0;exitDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" value="python executes here">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1451" y="657" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="vision" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.4;entryY=0;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=blockThin;endSize=6;fontSize=10;fontFamily=Helvetica Neue;fontColor=#475569;labelBackgroundColor=#FFFFFF;" target="runner" value="opening-board read → first prompt only">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
