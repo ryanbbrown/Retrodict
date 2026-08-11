@@ -6,6 +6,8 @@ Retrodict is an agent for [ARC-AGI-3](https://three.arcprize.org). It solves eve
 
 *Selected public harnesses above 75% RHAE. Cost methods and run-selection rules differ. See the [comparison methodology](docs/arc-agi-3-harness-comparison.md) for sources and qualifications.*
 
+Further reading: [Blog post: How Retrodict was built](https://blog.ryanbbrown.com/p/how-i-accidentally-got-the-top-score) · [X thread: ARC-AGI-3 cost, performance, and harness specialization](https://x.com/NotRyanB/status/2086929999290937486)
+
 ## How it works
 
 Retrodict is an LLM agent that plays each game like a scientist with a lab notebook. Every frame the game returns is written into a log file, and the agent works over that file with code instead of looking at images. To learn the rules, it proposes hypotheses and tests them against its own recorded history first, writing python that replays a hypothesis over past frames, where being wrong costs nothing. Only a hypothesis that survives the log earns real actions: the agent commits a queue of moves, each carrying the exact cells it predicts the board will show, and the runner plays the queue out one action per step, returning to the model only when the plan runs out or a prediction misses, along with the diff of what went differently. What it establishes about a game is curated into a playbook memory file that outlives its context window. The log-as-context, plan-queue foundation follows [RGB-Agent](https://github.com/alexisfox7/RGB-Agent).
