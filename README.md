@@ -1,7 +1,10 @@
 # Retrodict
 
-Retrodict is an agent for [ARC-AGI-3](https://three.arcprize.org) that solves every level of all 25 public games and scores a mean RHAE (relative human action efficiency) of 99.86% on an [official competition-mode scorecard](https://arcprize.org/scorecards/9c403765-db5b-40b1-beab-6fa3f40119b0), at a total API-list-price cost of $654. It's the highest publicly reported score on the benchmark, ahead of [baseline1](https://github.com/astroseger/arc-3-agents-baseline1)'s best run (98.97%) while spending 5.5x fewer tokens than that run. Built on [ThinHarness](https://github.com/ryanbbrown/thinharness); run with gpt-5.6-sol at `max` reasoning effort.
+Retrodict is an agent for [ARC-AGI-3](https://three.arcprize.org). It solves every level of all 25 public games. Its [official scorecard](https://arcprize.org/scorecards/9c403765-db5b-40b1-beab-6fa3f40119b0) reports 99.86% mean RHAE (relative human action efficiency) at a $654 API-list-price cost. Only [Tycho](https://github.com/NIMI-research/Tycho) scores higher in the public harness review: 100.00% at an estimated API-equivalent cost of $2,986. This places Retrodict on the reported cost-performance frontier. Retrodict uses [ThinHarness](https://github.com/ryanbbrown/thinharness) and gpt-5.6-sol at `max` reasoning effort.
 
+![ARC-AGI-3 performance versus cost](docs/images/arc-agi-3-performance-versus-cost.png)
+
+*Selected public harnesses above 75% RHAE. Cost methods and run-selection rules differ. See the [comparison methodology](docs/arc-agi-3-harness-comparison.md) for sources and qualifications.*
 
 ## How it works
 
@@ -34,9 +37,24 @@ The system prompt ([src/arc3/prompts.py](src/arc3/prompts.py)) is ~150 lines and
 
 ## Performance
 
-**99.86% mean RHAE across all 25 public games, every level solved**, scored by the ARC-AGI-3 server on an official competition-mode scorecard: [arcprize.org/scorecards/9c403765-db5b-40b1-beab-6fa3f40119b0](https://arcprize.org/scorecards/9c403765-db5b-40b1-beab-6fa3f40119b0). 23 of the 25 games score a perfect 100% RHAE; the other two are sk48 (98.64%) and sp80 (97.77%). The campaign took 7,703 actions and 660M tokens, $654 at gpt-5.6-sol API list prices.
+Retrodict scores **99.86% mean RHAE across all 25 public games and solves every level**. The ARC-AGI-3 server recorded the result on an [official competition-mode scorecard](https://arcprize.org/scorecards/9c403765-db5b-40b1-beab-6fa3f40119b0). Of the 25 games, 23 score 100% RHAE. The other scores are 98.64% for sk48 and 97.77% for sp80. The campaign used 7,703 actions and 660M tokens. It cost $654 at gpt-5.6-sol API list prices.
 
-The previous best publicly reported score is [baseline1](https://github.com/astroseger/arc-3-agents-baseline1)'s 98.97% ([scorecard](https://arcprize.org/scorecards/34ea0a31-21f8-4a34-b5ee-5e26fdfc9a5c)), from its full executable-world-model configuration (ewma_sv) running gpt-5.6-sol at `xhigh` effort. baseline1 has published per-game usage data for both of its configurations at both efforts, all on the same model as Retrodict's run:
+| Harness | Best public result | Cost used | Run and coverage |
+|---|---:|---:|---|
+| [Tycho](https://github.com/NIMI-research/Tycho) | 100.00% | $2,986 | One full 25-game run |
+| **Retrodict** | **99.86%** | **$654** | One full 25-game run; all 183 levels solved |
+| [Schema](https://schema-harness.github.io/) | 98.98% | At least $6,447 | Fixed conditional reruns; higher result retained |
+| [baseline1](https://github.com/astroseger/arc-3-agents-baseline1) | 98.97% | $2,722 | One full 25-game run |
+| [PRO-LONG](https://github.com/alexisfox7/PRO-LONG) | 97.4% best@2 | $1,750 | Selective second runs |
+| [Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent) | 95.5% | Approximately $944 | Three full runs; best result shown |
+| [NOOA](https://github.com/NVIDIA-NeMo/labs-OO-Agents) | 85.13% | $332 | One 25-game fleet under a two-hour cap |
+| [OPINE-World](https://github.com/david-courtis/opine-world) | 78.37% | $1,040 | One full 25-game run |
+
+The table uses one best public result per harness. Costs may be submitted, estimated, or converted to API-equivalent prices. The [comparison methodology](docs/arc-agi-3-harness-comparison.md) lists every reviewed harness, source, cost basis, and run qualification.
+
+### Same-model comparison
+
+baseline1 gives the cleanest token comparison. Both projects publish token usage and use the same model and price schedule. baseline1 publishes per-game data for two configurations at two effort levels:
 
 | Run | Mean RHAE | Actions | Total tokens | API-price cost |
 |---|---:|---:|---:|---:|
@@ -46,7 +64,9 @@ The previous best publicly reported score is [baseline1](https://github.com/astr
 | baseline1 ewma_sv (max) | 98.77% | 7,758 | 3.97B | $3,105 |
 | baseline1 ewma_sv (xhigh) | 98.97% | 8,347 | 3.64B | $2,722 |
 
-Against baseline1's best-scoring run (ewma_sv xhigh), Retrodict scores slightly higher with 5.5x fewer tokens. The twma rows (textual world model agent) are the fairest architecture comparison, since it reasons over text rather than building an executable simulator (Retrodict only builds an executable simulator after escalation on stuck levels). Against twma's best run, Retrodict scores much higher with 1.8x fewer tokens. Every run in the table solves every level of every game except twma xhigh (which leaves bp35 and lf52 unfinished), so the score differences are almost entirely action efficiency. Cost columns are computed at the same API list prices on both sides ($5.00 input / $0.50 cached / $30.00 output per MTok); baseline1 ran through Codex, so its dollar figures are API-price equivalents and **tokens are the comparable measure**.
+Against baseline1's best-scoring run, Retrodict scores 0.89 percentage points higher with 5.5x fewer tokens. The textual world model agent (twma) is the closest architecture comparison because it reasons over text. Retrodict also reasons over text but builds a simulator after escalation on stuck levels. Retrodict scores 3.89 points higher than twma max with 1.8x fewer tokens. Every row solves every level except twma xhigh, which leaves bp35 and lf52 unfinished.
+
+The costs use the same API list prices. These prices are $5.00 for input, $0.50 for cached input, and $30.00 for output per million tokens. baseline1 ran through Codex, so its costs are API-price equivalents. **Tokens are the primary comparison.**
 
 Per-game breakdowns with raw token counts: [Retrodict](docs/per-game-costs.md), [baseline1](docs/baseline1-per-game-costs.md).
 
